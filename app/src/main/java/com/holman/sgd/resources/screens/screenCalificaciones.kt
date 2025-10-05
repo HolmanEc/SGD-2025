@@ -629,7 +629,7 @@ fun ScreenNominaDetalleCalificaciones(
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
                 CustomButton(
-                    text = "<<  Volver a nóminas",
+                    text = "Volver a nóminas",
                     borderColor = ButtonDarkGray,
                     onClick = onBack
                 )

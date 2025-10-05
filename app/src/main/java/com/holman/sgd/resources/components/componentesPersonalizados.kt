@@ -36,6 +36,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Divider
@@ -89,7 +90,7 @@ import com.holman.sgd.ui.theme.TextoClaroLight
 
 
 @Composable
-fun CustomButton(
+fun CustomButtonokokokoko(
     text: String,
     borderColor: Color,
     onClick: () -> Unit,
@@ -175,6 +176,127 @@ fun CustomButton(
         )
     }
 }
+
+
+@Composable
+fun CustomButton(
+    text: String,
+    borderColor: Color,
+    onClick: () -> Unit,
+    buttonHeight: Dp = 45.dp
+) {
+    val scope = rememberCoroutineScope()
+    var pressed by remember { mutableStateOf(false) }
+
+    // 🎨 Animación del relleno
+    val backgroundColor by animateColorAsState(
+        targetValue = if (pressed) borderColor.copy(alpha = 0.8f) else Color.Transparent,
+        animationSpec = tween(durationMillis = 150),
+        label = "boxButtonBackground"
+    )
+
+    // 📌 Texto en minúscula para comparación
+    val lowerText = text.lowercase()
+
+    // 🔍 Detectar icono si el texto contiene alguna de las palabras clave
+    val icon: ImageVector? = when {
+        lowerText.contains("iniciar") -> Icons.Filled.MeetingRoom
+        lowerText.contains("volver") -> Icons.AutoMirrored.Filled.ArrowBack
+        lowerText.contains("guardar") -> Icons.Default.Save
+        lowerText.contains("cargar") -> Icons.Default.CloudUpload
+        lowerText.contains("agregar") -> Icons.Default.Add
+        lowerText.contains("cancelar") -> Icons.Default.Close
+        lowerText.contains("actualizar") -> Icons.Default.Refresh
+        lowerText.contains("eliminar") -> Icons.Default.Delete
+        lowerText.contains("borrar") -> Icons.Default.Delete
+        else -> null // ❗ Si no contiene ninguna palabra -> sin icono
+    }
+
+    Box(
+        modifier = Modifier
+            .padding(vertical = 4.dp)
+            .fillMaxWidth()
+            .height(buttonHeight)
+            .background(backgroundColor, RoundedCornerShape(50))
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onPress = {
+                        pressed = true
+                        try {
+                            awaitRelease()
+                        } finally {
+                            pressed = false
+                        }
+                    },
+                    onTap = {
+                        scope.launch { onClick() }
+                    }
+                )
+            }
+            .drawBehind {
+                drawIntoCanvas { canvas ->
+                    val paint = Paint().asFrameworkPaint().apply {
+                        isAntiAlias = true
+                        style = android.graphics.Paint.Style.STROKE
+                        strokeWidth = 3f
+                        setShadowLayer(12f, 0f, 0f, borderColor.toArgb())
+                    }
+
+                    val gradient = LinearGradientShader(
+                        from = Offset(0f, 0f),
+                        to = Offset(size.width, 0f),
+                        colors = listOf(borderColor, borderColor, borderColor),
+                        colorStops = listOf(0f, 0.5f, 1f)
+                    )
+                    paint.shader = gradient
+
+                    canvas.nativeCanvas.drawRoundRect(
+                        1f, 1f,
+                        size.width - 1f, size.height - 1f,
+                        size.height / 2,
+                        size.height / 2,
+                        paint
+                    )
+                }
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            // ✅ Mostrar icono si se reconoció alguna palabra
+            if (icon != null) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = if (pressed) TextoBotonClaro else borderColor,
+                    modifier = Modifier
+                        .size(18.dp)
+                        .padding(end = 6.dp)
+                )
+            }
+
+            Text(
+                text = text.uppercase(),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 2.sp,
+                color = if (pressed) TextoBotonClaro else borderColor
+            )
+        }
+    }
+}
+
+
+
+
+
+
+
+
+
+
 
 @Composable
 fun NominaCard(

@@ -506,7 +506,7 @@ fun ScreenRevisarNomina(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     CustomButton(
-                        text = "<<  Volver a nóminas",
+                        text = "Volver a nóminas",
                         borderColor = ButtonDarkGray,
                         onClick = { if (!isBusy) onBack() }
                     )
@@ -690,7 +690,7 @@ fun ScreenRevisarNomina(
                             contentAlignment = Alignment.Center
                         ) {
                             CustomButton(
-                                text = "➕  Agregar estudiante",
+                                text = "Agregar estudiante",
                                 borderColor = ButtonDarkSuccess,
                                 onClick = {
                                     if (isBusy) return@CustomButton

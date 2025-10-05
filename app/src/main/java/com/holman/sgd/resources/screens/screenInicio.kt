@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import com.holman.sgd.R
+import com.holman.sgd.resources.CustomButton
 import com.holman.sgd.ui.theme.*
 import com.holman.sgd.resources.components.*
 
@@ -166,7 +167,8 @@ fun isTablet(): Boolean {
 @SuppressLint("ContextCastToActivity")
 @Composable
 fun SalirDialog() {
-    val activity = LocalContext.current as Activity
+    val context = LocalContext.current
+    val activity = context as? Activity
     var showExitDialog by remember { mutableStateOf(false) }
 
     BackHandler {
@@ -176,19 +178,59 @@ fun SalirDialog() {
     if (showExitDialog) {
         AlertDialog(
             onDismissRequest = { showExitDialog = false },
+            title = {
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Salir de la aplicación",
+                        color = TextDefaultBlack,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            },
             text = {
-                Text("¿Seguro que quieres salir de la aplicación?")
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = "¿Seguro que quieres salir de la aplicación?",
+                        color = TextDefaultBlack,
+                        textAlign = TextAlign.Center
+                    )
+                }
             },
             confirmButton = {
-                TextButton(onClick = { activity.finish() }) {
-                    Text("Sí")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Box(modifier = Modifier.weight(1f)) {
+                        CustomButton(
+                            text = "Sí, Salir",
+                            borderColor = ButtonDarkError,
+                            onClick = {
+                                showExitDialog = false
+                                activity?.finish()
+                            }
+                        )
+                    }
+                    Box(modifier = Modifier.weight(1f)) {
+                        CustomButton(
+                            text = "Cancelar",
+                            borderColor = ButtonDarkGray,
+                            onClick = { showExitDialog = false }
+                        )
+                    }
                 }
             },
-            dismissButton = {
-                TextButton(onClick = { showExitDialog = false }) {
-                    Text("No")
-                }
-            }
+            dismissButton = {},
+            containerColor = BackgroundDefault
         )
     }
 }

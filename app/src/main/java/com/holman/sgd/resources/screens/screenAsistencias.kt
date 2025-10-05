@@ -361,7 +361,7 @@ fun ScreenNominaDetalleAsistencia(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     CustomButton(
-                        text = "<<  Volver a nóminas",
+                        text = "Volver a nóminas",
                         borderColor = ButtonDarkGray,
                         onClick = onBack
                     )

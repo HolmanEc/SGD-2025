@@ -69,4 +69,7 @@ dependencies {
     implementation("com.google.firebase:firebase-firestore-ktx:25.1.4")
 
     implementation("com.google.accompanist:accompanist-systemuicontroller:0.34.0")
+
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+
 }

@@ -1,5 +1,7 @@
 package com.holman.sgd
 
+import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -9,6 +11,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -23,14 +26,19 @@ import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.*
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseUser
 import com.holman.sgd.ui.theme.SGDTheme
 import kotlinx.coroutines.launch
 import com.holman.sgd.resources.*
@@ -58,14 +66,15 @@ fun App() {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
 
-    // Estado centralizado de la app
     val appState = remember(navController, drawerState, scope) {
         AppState(navController, drawerState, scope)
     }
 
-    // Detectar ruta actual
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
+
+    // 👇 Usuario actual de Firebase
+    val currentUser = rememberFirebaseUser()
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -89,26 +98,22 @@ fun App() {
                         }
                     },
                     actions = {
-                        // 🏠 Botón de Inicio - Siempre lleva a la pantalla principal
                         IconButton(onClick = { appState.navigateSingleTop(Screen.inicio.route, Screen.inicio.route) }) {
                             Icon(Icons.Default.Home, contentDescription = "Inicio", tint = TextDefaultWhite)
                         }
-
-                        Spacer(modifier = Modifier.width(16.dp))
-
-                        // ⚙️ Botón de Configuración
                         IconButton(onClick = { appState.navigateSingleTop(Screen.config.route, Screen.inicio.route) }) {
                             Icon(Icons.Default.Settings, contentDescription = "Configuración", tint = TextDefaultWhite)
                         }
-
-                        // ℹ️ Botón de Acerca de
                         IconButton(onClick = { appState.navigateSingleTop(Screen.about.route, Screen.inicio.route) }) {
                             Icon(Icons.Default.Info, contentDescription = "Acerca de", tint = TextDefaultWhite)
+                        }
+                        Spacer(modifier = Modifier.width(16.dp))
+                        if (currentUser != null) {
+                            AccountMenuIcon(user = currentUser)
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundBar)
                 )
-
             }
         ) { innerPadding ->
             Box(
@@ -246,4 +251,141 @@ class AppState(
             launchSingleTop = true
         }
     }
+}
+
+
+@Composable
+fun AccountMenuIcon(
+    user: FirebaseUser
+) {
+    val context = LocalContext.current
+    var expanded by remember { mutableStateOf(false) }
+
+    val displayName = remember(user) {
+        user.displayName?.takeIf { it.isNotBlank() }
+            ?: user.email?.substringBefore("@")?.replaceFirstChar { it.uppercase() }
+            ?: "Usuario"
+    }
+    val emailShown = user.email ?: "—"
+    val verified = user.isEmailVerified
+
+    Box {
+        IconButton(onClick = { expanded = true }) {
+            Icon(
+                imageVector = Icons.Default.AccountCircle,
+                contentDescription = "Cuenta",
+                tint = TextDefaultWhite
+            )
+        }
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier
+                .widthIn(min = 260.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(BackgroundDefault)   // 👈 Fondo del popup
+        ) {
+            // Encabezado
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+            ) {
+                Text(
+                    text = displayName,
+                    color = TextDefaultBlack,       // 👈 Texto negro
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
+                Spacer(Modifier.height(4.dp))
+
+                Column(modifier = Modifier.padding(start = 20.dp)) {
+
+                    // • Correo con icono
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Email,
+                            contentDescription = null,
+                            tint = TextDefaultBlack,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = emailShown,
+                            color = TextDefaultBlack.copy(alpha = 0.8f),
+                            fontSize = 13.sp
+                        )
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+
+                    // • Estado de verificación con icono
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = if (verified) Icons.Default.Verified else Icons.Default.ErrorOutline,
+                            contentDescription = null,
+                            tint = if (verified) ButtonDarkSuccess else ButtonDarkError,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = if (verified) "Verificado" else "No verificado",
+                            color = TextDefaultBlack,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+
+
+            }
+
+            Divider(color = TextDefaultBlack.copy(alpha = 0.1f))
+
+            DropdownMenuItem(
+                text = { Text("Cerrar sesión", color = TextDefaultBlack) },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Logout,
+                        contentDescription = null,
+                        tint = TextDefaultBlack       // 👈 Icono negro
+                    )
+                },
+                onClick = {
+                    expanded = false
+                    signOutAndOpenLogin(context)
+                },
+                colors = MenuDefaults.itemColors(
+                    textColor = TextDefaultBlack,         // 👈 Ítem texto negro
+                    leadingIconColor = TextDefaultBlack,  // 👈 Ítem icono negro
+                    trailingIconColor = TextDefaultBlack
+                )
+            )
+        }
+    }
+}
+
+
+// Observa el estado de FirebaseAuth y expone el usuario actual como State
+@Composable
+fun rememberFirebaseUser(): FirebaseUser? {
+    val auth = remember { FirebaseAuth.getInstance() }
+    var user by remember { mutableStateOf(auth.currentUser) }
+
+    DisposableEffect(Unit) {
+        val listener = FirebaseAuth.AuthStateListener { firebaseAuth ->
+            user = firebaseAuth.currentUser
+        }
+        auth.addAuthStateListener(listener)
+        onDispose { auth.removeAuthStateListener(listener) }
+    }
+    return user
+}
+
+// Cerrar sesión y volver a LoginActivity
+fun signOutAndOpenLogin(context: Context) {
+    FirebaseAuth.getInstance().signOut()
+    val intent = Intent(context, LoginActivity::class.java)
+    intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+    context.startActivity(intent)
 }

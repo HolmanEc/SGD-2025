@@ -1,8 +1,6 @@
 package com.holman.sgd.ui.theme
 
 import androidx.compose.ui.graphics.Color
-import com.google.firebase.annotations.concurrent.Background
-
 
 // ======================
 // Colores para fondos de screens
@@ -27,37 +25,11 @@ val Card7 = Color(0xFFEF9A9A)  // Rojo coral medio
 val Card8 = Color(0xFFB0BEC5)  // Gris azulado medio
 
 
-
-
-
 // ======================
 // Colores para botones
 // ======================
 val EncabezadoEnDetalleNominas = Color(0xFF4A5565)
 val BtnFlotanteGuardarEnNomiba = Color(0xFF27702A)
-
-
-
-
-
-
-
-
-
-
-
-// ======================
-// Colores para cards de nominas
-// ======================
-// Colores para botones claros
-val ButtonLightPrimary = Color(0xFF81D4FA)
-val ButtonLightSecondary = Color(0xFF80CBC4)
-val ButtonLightSuccess = Color(0xFFC5E1A5)
-val ButtonLightWarning = Color(0xFFFFCC80)
-val ButtonLightInfo = Color(0xFFE1BEE7)
-val ButtonLightError = Color(0xFFEF9A9A)
-val ButtonLightBlack = Color(0xFF000000)
-val ButtonLightGray = Color(0xFF9E9E9E)
 
 // Colores para botones oscuros
 val ButtonDarkPrimary = Color(0xFF3043B6)
@@ -67,6 +39,7 @@ val ButtonDarkWarning = Color(0xFFF57C00)
 val ButtonDarkInfo = Color(0xFF6A1B9A)
 val ButtonDarkError = Color(0xFFD32F2F)
 val ButtonDarkBlack = Color(0xFF000000)
+val ButtonWhitePrimary = Color(0xFFFFFFFF)
 val ButtonDarkGray = Color(0xFF616161)
 
 // ======================
@@ -85,13 +58,10 @@ val TextoAprobado = Color.Black
 val TextoReprobado = Color.Red
 
 
-
-
-
-
 // ======================
 // Colores para fondos
 // ======================
+
 val CelesteClaroLight = Color(0xFFA9D5F5)
 val VerdeClaroLight = Color(0xFF9AD8D1)
 val VerdeClaroLight2 = Color(0xFFD5FFB3)
