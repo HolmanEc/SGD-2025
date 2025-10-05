@@ -1,0 +1,1623 @@
+package com.holman.sgd.resources.nominas
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.google.firebase.firestore.FirebaseFirestore
+import com.holman.sgd.resources.CustomButton
+import com.holman.sgd.resources.NominaResumen
+import com.holman.sgd.resources.cargarNominasDesdeFirestore
+import com.holman.sgd.resources.mensajealert
+import com.holman.sgd.ui.theme.ButtonDarkError
+import com.holman.sgd.ui.theme.ButtonDarkPrimary
+import kotlin.collections.plus
+import kotlin.text.ifEmpty
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.Icon
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.text.input.KeyboardType
+import com.google.firebase.firestore.CollectionReference
+import com.holman.sgd.resources.LoadingDotsOverlay
+import com.holman.sgd.ui.theme.ButtonDarkGray
+import com.holman.sgd.ui.theme.ButtonDarkSuccess
+import kotlinx.coroutines.launch
+import com.holman.sgd.resources.screens.isTablet
+import com.holman.sgd.ui.theme.BackgroundDefault
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.Scaffold
+import com.holman.sgd.resources.NominaHeaderCard
+import android.annotation.SuppressLint
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.window.Dialog
+import com.holman.sgd.resources.FloatingSaveButton
+import com.holman.sgd.resources.InfoItem
+import com.holman.sgd.resources.NominaReviewCard
+import com.holman.sgd.ui.theme.TextDefaultBlack
+import androidx.compose.ui.zIndex
+import com.google.firebase.firestore.SetOptions
+
+
+// SECCION DE REVISAR NOMINA
+@Composable
+fun revisarNomina(onBack: () -> Unit) {
+    val context = LocalContext.current
+
+    var nominas by remember { mutableStateOf<List<NominaResumen>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    // Estados de navegación interna (detalle de nómina para edición de estudiantes)
+    var nominaAEditar by remember { mutableStateOf<NominaResumen?>(null) }
+    var headerColorSelected by remember { mutableStateOf<Color?>(null) }
+
+    // Estado para confirmación de borrado
+    var nominaAEliminar by remember { mutableStateOf<NominaResumen?>(null) }
+    var isDeleting by remember { mutableStateOf(false) }
+    val isBusy by remember { derivedStateOf { isLoading || isDeleting } }
+
+    // ✅ NUEVO: estado para abrir el modal de edición de metadatos
+    var nominaParaEditar by remember { mutableStateOf<NominaResumen?>(null) }
+
+    // Cargar nóminas
+    LaunchedEffect(Unit) {
+        cargarNominasDesdeFirestore(
+            onSuccess = {
+                nominas = it
+                isLoading = false
+            },
+            onError = {
+                error = it
+                isLoading = false
+            }
+        )
+    }
+
+    // Si hay una nómina seleccionada para editar estudiantes, mostramos pantalla de detalle
+    nominaAEditar?.let { nomina ->
+        ScreenRevisarNomina(
+            nomina = nomina,
+            headerColor = headerColorSelected ?: MaterialTheme.colorScheme.primary,
+            onBack = {
+                nominaAEditar = null
+                headerColorSelected = null
+            }
+        )
+        return
+    }
+
+    // Pantalla de lista
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(BackgroundDefault)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.Top
+        ) {
+            // Área lista
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                contentAlignment = Alignment.TopStart
+            ) {
+                when {
+                    isLoading -> {
+                        Spacer(Modifier.size(1.dp))
+                    }
+                    error != null -> Text(
+                        text = "❌ Error: $error",
+                        fontSize = 16.sp,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .wrapContentWidth(Alignment.CenterHorizontally)
+                    )
+                    nominas.isEmpty() -> Box(
+                        modifier = Modifier
+                            .fillMaxSize(), // 👈 ocupar todo el espacio disponible
+                        contentAlignment = Alignment.Center // 👈 centrar en ambas direcciones
+                    ) {
+                        Text(
+                            text = "📋 No hay nóminas guardadas.",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Medium,
+                            textAlign = TextAlign.Center // 👈 opcional para centrar el texto dentro de sí mismo
+                        )
+                    }
+
+                    else -> Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(start = 16.dp, top = 16.dp, end = 16.dp)
+                    ) {
+                        Text(
+                            text = "📋 Nóminas Guardadas",
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .wrapContentWidth(Alignment.CenterHorizontally)
+                                .padding(top = 16.dp, bottom = 8.dp)
+                        )
+
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                        ) {
+                            ListaNominas(
+                                nominas = nominas,
+                                onRevisar = { n, color ->
+                                    if (!isBusy) {
+                                        nominaAEditar = n
+                                        headerColorSelected = color
+                                    }
+                                },
+                                onBorrar = { if (!isBusy) nominaAEliminar = it },
+                                isBusy = isBusy,
+                                onEditarDatos = { if (!isBusy) nominaParaEditar = it } // 👈 NUEVO
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Botón inferior
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                CustomButton(
+                    text = "Volver",
+                    borderColor = ButtonDarkGray,
+                    onClick = { if (!isBusy) onBack() }
+                )
+            }
+        }
+
+        LoadingDotsOverlay(isLoading = isBusy)
+    }
+
+    // Modal Confirmación Borrar
+    nominaAEliminar?.let { nomina ->
+        ModalConfirmarBorrar(
+            nomina = nomina,
+            onConfirm = {
+                nominaAEliminar = null
+                isDeleting = true
+                eliminarNominaFirebaseCompleta(
+                    nominaId = nomina.id,
+                    subcolecciones = listOf("asistencias", "calificaciones"),
+                    onSuccess = {
+                        nominas = nominas.filterNot { it.id == nomina.id }
+                        isDeleting = false
+                        mensajealert(context, "✅  La nómina ha sido eliminada completamente.")
+                    },
+                    onError = { msg ->
+                        isDeleting = false
+                        mensajealert(context, "❌  Error al eliminar: $msg")
+                    }
+                )
+            },
+            onCancel = { nominaAEliminar = null }
+        )
+    }
+
+    // ✅ NUEVO: Modal para editar metadatos de la nómina
+    nominaParaEditar?.let { n ->
+        ModalEditarNomina(
+            nomina = n,
+            onDismiss = { nominaParaEditar = null },
+            onSaved = { actualizada ->
+                // Refresca en memoria para que la card muestre los cambios
+                nominas = nominas.map { if (it.id == actualizada.id) actualizada else it }
+                nominaParaEditar = null
+                mensajealert(context, "✅  Nómina actualizada correctamente.")
+            }
+        )
+    }
+}
+
+@Composable
+fun ListaNominas(
+    nominas: List<NominaResumen>,
+    onRevisar: (NominaResumen, Color) -> Unit,
+    onBorrar: (NominaResumen) -> Unit,
+    isBusy: Boolean = false,
+    onEditarDatos: (NominaResumen) -> Unit // 👈 NUEVO
+) {
+    val isTablet = isTablet()
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(0.dp)
+    ) {
+        itemsIndexed(nominas) { index, nomina ->
+            NominaReviewCard(
+                nomina = nomina,
+                index = index,
+                isTablet = isTablet,
+                isBusy = isBusy,
+                onRevisar = onRevisar,
+                onBorrar = onBorrar,
+                onEditar = { onEditarDatos(nomina) } // 👈 dispara el modal de edición
+            )
+        }
+    }
+}
+
+
+/* ---------- Helper sencillo: verificación por campos (una sola query) ---------- */
+/* Colócalo en el mismo archivo o en un repo utilitario. */
+fun existeNominaIgualPorCampos(
+    institucion: String,
+    docente: String,
+    curso: String,
+    paralelo: String,
+    asignatura: String,
+    especialidad: String,
+    periodo: String,
+    excluirId: String?,
+    onResult: (Boolean) -> Unit,
+    onError: (String) -> Unit
+) {
+    val db = FirebaseFirestore.getInstance()
+
+    // 🔤 Normalizamos todos los campos a minúsculas antes de consultar
+    val instNorm = institucion.trim().lowercase()
+    val docNorm = docente.trim().lowercase()
+    val cursoNorm = curso.trim().lowercase()
+    val paraleloNorm = paralelo.trim().lowercase()
+    val asigNorm = asignatura.trim().lowercase()
+    val especNorm = especialidad.trim().lowercase()
+    val periodoNorm = periodo.trim().lowercase()
+
+    db.collection("gestionAcademica")
+        .document("gestionNominas")
+        .collection("nominasEstudiantes")
+        .get()
+        .addOnSuccessListener { snap ->
+            val hayDuplicado = snap.documents.any { doc ->
+                if (doc.id == excluirId) return@any false
+                val d = doc.data ?: return@any false
+
+                (d["institucion"] as? String)?.trim()?.lowercase() == instNorm &&
+                        (d["docente"] as? String)?.trim()?.lowercase() == docNorm &&
+                        (d["curso"] as? String)?.trim()?.lowercase() == cursoNorm &&
+                        (d["paralelo"] as? String)?.trim()?.lowercase() == paraleloNorm &&
+                        (d["asignatura"] as? String)?.trim()?.lowercase() == asigNorm &&
+                        (d["especialidad"] as? String)?.trim()?.lowercase() == especNorm &&
+                        (d["periodo"] as? String)?.trim()?.lowercase() == periodoNorm
+            }
+
+            onResult(hayDuplicado)
+        }
+        .addOnFailureListener { e ->
+            onError(e.localizedMessage ?: "Error verificando duplicados")
+        }
+}
+
+
+fun actualizarDatosNomina(
+    nominaId: String,
+    nominaActualizada: NominaResumen,
+    onSuccess: () -> Unit,
+    onError: (String) -> Unit
+) {
+    val db = FirebaseFirestore.getInstance()
+
+    val data = mapOf(
+        "institucion" to nominaActualizada.institucion,
+        "docente" to nominaActualizada.docente,
+        "curso" to nominaActualizada.curso,
+        "paralelo" to nominaActualizada.paralelo,
+        "asignatura" to nominaActualizada.asignatura,
+        "especialidad" to nominaActualizada.especialidad,
+        "periodo" to nominaActualizada.periodo
+    )
+
+    val docNomina = db.collection("gestionAcademica")
+        .document("gestionNominas")
+        .collection("nominasEstudiantes")
+        .document(nominaId)
+
+    docNomina.set(data, SetOptions.merge())
+        .addOnSuccessListener {
+            // Si mantienes otra colección "resumenNominas", duplica aquí el set() con merge.
+            onSuccess()
+        }
+        .addOnFailureListener { e ->
+            onError(e.localizedMessage ?: "Error al guardar")
+        }
+}
+
+@SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
+@Composable
+fun ScreenRevisarNomina(
+    nomina: NominaResumen,
+    headerColor: Color,
+    onBack: () -> Unit
+) {
+    val context = LocalContext.current
+
+    var estudiantes by remember { mutableStateOf<List<EstudianteNomina>>(emptyList()) }
+    var estudiantesOriginal by remember { mutableStateOf<List<EstudianteNomina>>(emptyList()) } // para detectar cambios
+    var isLoading by remember { mutableStateOf(true) }
+    var isSaving by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var editingField by remember { mutableStateOf<Pair<Int, String>?>(null) }
+
+    val listState = rememberLazyListState()
+    var scrollToEnd by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
+
+    // 📏 Tamaño global de fuente para la lista/edición/encabezados
+    val fontSizeEstudiantes = 14.sp
+
+    // Estado unificado para overlay y visibilidad del FAB
+    val isBusy by remember { derivedStateOf { isLoading || isSaving } }
+
+    // --- Utils: normalizar y comparar listas (para evitar guardados innecesarios)
+    fun normalize(list: List<EstudianteNomina>) =
+        list.sortedBy { it.nombre }.map { it.copy(nombre = it.nombre.trim(), cedula = it.cedula.trim()) }
+
+    fun hasChanges(): Boolean = normalize(estudiantes) != normalize(estudiantesOriginal)
+
+    LaunchedEffect(scrollToEnd) {
+        if (scrollToEnd && estudiantes.isNotEmpty()) {
+            listState.animateScrollToItem(estudiantes.size - 1)
+            scrollToEnd = false
+        }
+    }
+
+    LaunchedEffect(nomina.id) {
+        cargarEstudiantesDeNomina(
+            nominaId = nomina.id,
+            onSuccess = {
+                estudiantes = it
+                estudiantesOriginal = it // snapshot original
+                isLoading = false
+            },
+            onError = {
+                error = it
+                isLoading = false
+            }
+        )
+    }
+
+    Scaffold(
+        containerColor = BackgroundDefault,
+        floatingActionButton = {
+            FloatingSaveButton(
+                visible = !isBusy, // se oculta mientras carga/guarda
+                onClick = {
+                    if (!hasChanges()) {
+                        mensajealert(context, "ℹ️ No hay cambios para guardar.")
+                        return@FloatingSaveButton
+                    }
+
+                    // Validaciones básicas
+                    val hayVacios = estudiantes.any { it.cedula.isBlank() || it.nombre.isBlank() }
+                    if (hayVacios) {
+                        mensajealert(context, "⚠️ Completa cédula y nombre en todos los estudiantes.")
+                        return@FloatingSaveButton
+                    }
+
+                    isSaving = true
+                    val estudiantesOrdenados = normalize(estudiantes)
+
+                    actualizarEstudiantesDeNomina(
+                        nomina.id,
+                        estudiantesOrdenados,
+                        onSuccess = {
+                            mensajealert(context, "✅ Datos actualizados")
+                            editingField = null
+                            // recargar y apagar overlay al terminar
+                            cargarEstudiantesDeNomina(
+                                nominaId = nomina.id,
+                                onSuccess = { lista ->
+                                    estudiantes = lista
+                                    estudiantesOriginal = lista
+                                    coroutineScope.launch { listState.scrollToItem(0) }
+                                    isSaving = false
+                                },
+                                onError = { msg ->
+                                    mensajealert(context, "⚠️ No se pudo recargar: $msg")
+                                    isSaving = false
+                                }
+                            )
+                        },
+                        onError = { msg ->
+                            mensajealert(context, "❌ Error: $msg")
+                            isSaving = false
+                        }
+                    )
+                },
+                modifier = Modifier.offset(x = (-4).dp, y = -100.dp),
+            )
+        }
+    ) { _ ->
+        Box(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp, vertical = 16.dp)
+            ) {
+                // ── Botón Volver arriba (igual a Asistencias)
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    CustomButton(
+                        text = "<<  Volver a nóminas",
+                        borderColor = ButtonDarkGray,
+                        onClick = { if (!isBusy) onBack() }
+                    )
+                }
+
+                Spacer(Modifier.height(16.dp))
+
+                // ── Encabezado reutilizando tu card
+                NominaHeaderCard(
+                    nomina = nomina,
+                    backgroundColor = headerColor,
+                    onClick = null
+                )
+
+                Spacer(Modifier.height(12.dp))
+
+                when {
+                    isLoading -> {
+                        Spacer(Modifier.height(1.dp)) // el overlay se encarga
+                    }
+                    error != null -> Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        Text("❌ Error: $error", color = Color.Red)
+                    }
+                    else -> {
+                        // ── Cabecera de tabla con el mismo color
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .background(headerColor, shape = RoundedCornerShape(8.dp))
+                                .padding(vertical = 10.dp, horizontal = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "  CÉDULA",
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = fontSizeEstudiantes,
+                                modifier = Modifier.weight(0.25f),
+                                color = Color.Black
+                            )
+                            Text(
+                                "  ESTUDIANTE",
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = fontSizeEstudiantes,
+                                modifier = Modifier.weight(0.6f),
+                                color = Color.Black
+                            )
+                            Text(
+                                "ACCIÓN",
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = fontSizeEstudiantes,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.weight(0.15f),
+                                color = Color.Black
+                            )
+                        }
+
+                        // ── Lista editable
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            itemsIndexed(estudiantes, key = { _, it -> it.idUnico }) { index, est ->
+
+                                val isCedulaEditing = editingField?.first == index && editingField?.second == "cedula"
+                                val isNombreEditing = editingField?.first == index && editingField?.second == "nombre"
+
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    // CÉDULA
+                                    if (isCedulaEditing) {
+                                        val focusRequesterCedula = remember { FocusRequester() }
+                                        OutlinedTextField(
+                                            value = est.cedula,
+                                            onValueChange = { nuevo ->
+                                                val filtrado = nuevo.uppercase().filter { it.isLetterOrDigit() }
+                                                estudiantes = estudiantes.toMutableList().also { lista ->
+                                                    lista[index] = lista[index].copy(cedula = filtrado)
+                                                }
+                                            },
+                                            label = { Text("Cédula", fontSize = fontSizeEstudiantes) },
+                                            textStyle = LocalTextStyle.current.copy(fontSize = fontSizeEstudiantes),
+                                            singleLine = true,
+                                            enabled = !isBusy,
+                                            modifier = Modifier
+                                                .weight(0.25f)
+                                                .focusRequester(focusRequesterCedula)
+                                                .onFocusChanged { if (it.isFocused) editingField = index to "cedula" },
+                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Done),
+                                            keyboardActions = KeyboardActions(onDone = {
+                                                estudiantes = estudiantes.toMutableList().also { lista ->
+                                                    val nuevo = lista[index]
+                                                    lista[index] = nuevo.copy(
+                                                        idUnico = generarIdUnicoEstudianteNomina(nuevo.cedula, nuevo.nombre)
+                                                    )
+                                                }
+                                                editingField = null
+                                            })
+                                        )
+                                        LaunchedEffect(Unit) { focusRequesterCedula.requestFocus() }
+                                    } else {
+                                        Text(
+                                            text = est.cedula.ifEmpty { "Cédula" },
+                                            color = if (est.cedula.isEmpty()) Color.Gray else Color.Black,
+                                            fontSize = fontSizeEstudiantes,
+                                            modifier = Modifier
+                                                .weight(0.25f)
+                                                .clickable(enabled = !isBusy) { editingField = index to "cedula" }
+                                                .padding(8.dp)
+                                        )
+                                    }
+
+                                    // NOMBRE
+                                    if (isNombreEditing) {
+                                        val focusRequesterNombre = remember { FocusRequester() }
+                                        OutlinedTextField(
+                                            value = est.nombre,
+                                            onValueChange = { nuevo ->
+                                                val filtrado = nuevo.uppercase().filter { it.isLetter() || it.isWhitespace() }
+                                                estudiantes = estudiantes.toMutableList().also { lista ->
+                                                    lista[index] = lista[index].copy(nombre = filtrado)
+                                                }
+                                            },
+                                            label = { Text("Nombre", fontSize = fontSizeEstudiantes) },
+                                            textStyle = LocalTextStyle.current.copy(fontSize = fontSizeEstudiantes),
+                                            singleLine = true,
+                                            enabled = !isBusy,
+                                            modifier = Modifier
+                                                .weight(0.6f)
+                                                .focusRequester(focusRequesterNombre)
+                                                .onFocusChanged { if (it.isFocused) editingField = index to "nombre" },
+                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Done),
+                                            keyboardActions = KeyboardActions(onDone = {
+                                                estudiantes = estudiantes.toMutableList().also { lista ->
+                                                    val nuevo = lista[index]
+                                                    lista[index] = nuevo.copy(
+                                                        idUnico = generarIdUnicoEstudianteNomina(nuevo.cedula, nuevo.nombre)
+                                                    )
+                                                }
+                                                editingField = null
+                                            })
+                                        )
+                                        LaunchedEffect(Unit) { focusRequesterNombre.requestFocus() }
+                                    } else {
+                                        Text(
+                                            text = est.nombre.ifEmpty { "Nombre" },
+                                            color = if (est.nombre.isEmpty()) Color.Gray else Color.Black,
+                                            fontSize = fontSizeEstudiantes,
+                                            modifier = Modifier
+                                                .weight(0.6f)
+                                                .clickable(enabled = !isBusy) { editingField = index to "nombre" }
+                                                .padding(8.dp)
+                                        )
+                                    }
+
+                                    // ACCIÓN
+                                    val interaction = remember(est.idUnico) { MutableInteractionSource() }
+                                    Box(Modifier.weight(0.15f).wrapContentWidth(Alignment.CenterHorizontally)) {
+                                        IconButton(
+                                            onClick = {
+                                                if (isBusy) return@IconButton
+                                                editingField = null
+                                                estudiantes = estudiantes.toMutableList().also { it.removeAt(index) }
+                                            },
+                                            interactionSource = interaction,
+                                            enabled = !isBusy
+                                        ) {
+                                            Icon(Icons.Default.Delete, "Eliminar estudiante", tint = Color.Red)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Botón Agregar estudiante (como antes)
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(top = 16.dp, bottom = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CustomButton(
+                                text = "➕  Agregar estudiante",
+                                borderColor = ButtonDarkSuccess,
+                                onClick = {
+                                    if (isBusy) return@CustomButton
+                                    val hayVacios = estudiantes.any { it.cedula.isBlank() || it.nombre.isBlank() }
+                                    if (hayVacios) {
+                                        mensajealert(context, "⚠️ No puedes crear un nuevo registro si tienes otro vacío.")
+                                        return@CustomButton
+                                    }
+
+                                    // Cerrar edición activa si la hay
+                                    editingField?.let { (index, _) ->
+                                        val est = estudiantes[index]
+                                        if (est.cedula.isNotBlank() && est.nombre.isNotBlank()) {
+                                            estudiantes = estudiantes.toMutableList().also { lista ->
+                                                lista[index] = lista[index].copy(
+                                                    idUnico = generarIdUnicoEstudianteNomina(est.cedula, est.nombre)
+                                                )
+                                            }
+                                            editingField = null
+                                        } else {
+                                            mensajealert(context, "⚠️ Completa el estudiante antes de crear otro.")
+                                            return@CustomButton
+                                        }
+                                    }
+
+                                    val nuevoEstudiante = EstudianteNomina(
+                                        idUnico = generarIdUnicoEstudianteNomina("", ""),
+                                        cedula = "",
+                                        nombre = ""
+                                    )
+                                    estudiantes = estudiantes + nuevoEstudiante
+                                    editingField = estudiantes.lastIndex to "cedula"
+                                    scrollToEnd = true
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Overlay de puntos durante carga/guardado
+            LoadingDotsOverlay(isLoading = isBusy)
+        }
+    }
+}
+
+// 🔹 Data class actualizada para estudiantes con ID único
+data class EstudianteNomina(
+    val idUnico: String,    // ID único basado en cédula
+    var cedula: String,
+    var nombre: String
+)
+
+// 🔹 Función para generar ID único para estudiante en nómina
+fun generarIdUnicoEstudianteNomina(cedula: String, nombre: String): String {
+    return if (cedula.isNotBlank()) {
+        "cedula_${cedula.trim()}"
+    } else {
+        "nombre_${nombre.trim().lowercase().hashCode()}"
+    }
+}
+
+fun cargarEstudiantesDeNomina(
+    nominaId: String,
+    onSuccess: (List<EstudianteNomina>) -> Unit,
+    onError: (String) -> Unit
+) {
+    val db = FirebaseFirestore.getInstance()
+    db.collection("gestionAcademica")
+        .document("gestionNominas")
+        .collection("nominasEstudiantes")
+        .document(nominaId)
+        .get()
+        .addOnSuccessListener { doc ->
+            if (doc.exists()) {
+                val tabla = doc.get("tabla") as? List<Map<String, String>> ?: emptyList()
+                val filasDatos = if (tabla.size > 1) tabla.drop(1) else emptyList()
+
+                val lista = filasDatos.map { fila ->
+                    val cedula = fila["col2"] ?: ""
+                    val nombre = fila["col3"] ?: ""
+                    EstudianteNomina(
+                        idUnico = generarIdUnicoEstudianteNomina(cedula, nombre),
+                        cedula = cedula,
+                        nombre = nombre
+                    )
+                }
+                onSuccess(lista)
+            } else {
+                onError("No existe la nómina")
+            }
+        }
+        .addOnFailureListener { e ->
+            onError(e.localizedMessage ?: "Error al leer nómina")
+        }
+}
+
+fun actualizarEstudiantesDeNomina(
+    nominaId: String,
+    estudiantes: List<EstudianteNomina>,
+    onSuccess: () -> Unit,
+    onError: (String) -> Unit
+) {
+    val db = FirebaseFirestore.getInstance()
+
+    // Reconstruir la tabla con encabezados
+    val encabezados = mapOf(
+        "col1" to "N°",
+        "col2" to "Cédula",
+        "col3" to "Estudiante"
+    )
+
+    val filas = listOf(encabezados) + estudiantes.mapIndexed { i, est ->
+        mapOf(
+            "col1" to (i + 1).toString(),
+            "col2" to est.cedula,
+            "col3" to est.nombre
+        )
+    }
+
+    db.collection("gestionAcademica")
+        .document("gestionNominas")
+        .collection("nominasEstudiantes")
+        .document(nominaId)
+        .update("tabla", filas)
+        .addOnSuccessListener {
+            // 🔹 Después de actualizar la nómina, limpiar asistencias huérfanas
+            limpiarTodasLasAsistenciasHuerfanas(nominaId, estudiantes)
+            onSuccess()
+        }
+        .addOnFailureListener { e -> onError(e.localizedMessage ?: "Error al actualizar") }
+}
+
+// 🔹 Limpiar asistencias huérfanas en todas las fechas cuando se actualiza la nómina
+fun limpiarTodasLasAsistenciasHuerfanas(
+    nominaId: String,
+    estudiantesActuales: List<EstudianteNomina>
+) {
+    val db = FirebaseFirestore.getInstance()
+    val rutaAsistencias = db.collection("gestionAcademica")
+        .document("gestionNominas")
+        .collection("nominasEstudiantes")
+        .document(nominaId)
+        .collection("asistencias")
+
+    // Obtener todos los documentos de asistencias
+    rutaAsistencias.get().addOnSuccessListener { querySnapshot ->
+        val idsActuales = estudiantesActuales.map { it.idUnico }.toSet()
+        val nombresActuales = estudiantesActuales.map { it.nombre }.toSet()
+
+        querySnapshot.documents.forEach { document ->
+            val asistenciaActual = document.data?.toMutableMap() ?: mutableMapOf()
+            var huboLimpieza = false
+
+            val iterator = asistenciaActual.iterator()
+            while (iterator.hasNext()) {
+                val entry = iterator.next()
+                val claveAsistencia = entry.key
+
+                // Verificar si la clave corresponde a un estudiante actual
+                val esEstudianteActual = idsActuales.contains(claveAsistencia) ||
+                        nombresActuales.contains(claveAsistencia)
+
+                if (!esEstudianteActual) {
+                    iterator.remove()
+                    huboLimpieza = true
+                }
+            }
+
+            // Actualizar documento si hubo limpieza
+            if (huboLimpieza) {
+                if (asistenciaActual.isEmpty()) {
+                    document.reference.delete()
+                } else {
+                    document.reference.set(asistenciaActual)
+                }
+            }
+        }
+    }
+}
+
+
+
+fun eliminarNominaFirebaseCompleta(
+    nominaId: String,
+    subcolecciones: List<String> = listOf("asistencias", "calificaciones"),
+    onSuccess: () -> Unit,
+    onError: (String) -> Unit
+) {
+    val db = FirebaseFirestore.getInstance()
+    val docRef = db.collection("gestionAcademica")
+        .document("gestionNominas")
+        .collection("nominasEstudiantes")
+        .document(nominaId)
+
+    fun borrarSubcoleccionEnLotes(
+        colRef: CollectionReference,
+        onSubDone: () -> Unit,
+        onSubError: (Exception) -> Unit
+    ) {
+        colRef.limit(500).get()
+            .addOnSuccessListener { snap ->
+                if (snap.isEmpty) {
+                    onSubDone(); return@addOnSuccessListener
+                }
+                val batch = db.batch()
+                snap.documents.forEach { batch.delete(it.reference) }
+                batch.commit()
+                    .addOnSuccessListener { borrarSubcoleccionEnLotes(colRef, onSubDone, onSubError) }
+                    .addOnFailureListener(onSubError)
+            }
+            .addOnFailureListener(onSubError)
+    }
+
+    fun borrarSiguienteSubcoleccion(index: Int) {
+        if (index >= subcolecciones.size) {
+            docRef.delete()
+                .addOnSuccessListener { onSuccess() }
+                .addOnFailureListener { e -> onError(e.localizedMessage ?: "Error al borrar nómina") }
+            return
+        }
+        val nombre = subcolecciones[index]
+        borrarSubcoleccionEnLotes(
+            colRef = docRef.collection(nombre),
+            onSubDone = { borrarSiguienteSubcoleccion(index + 1) },
+            onSubError = { e -> onError(e.localizedMessage ?: "Error al borrar subcolección: $nombre") }
+        )
+    }
+    borrarSiguienteSubcoleccion(0)
+}
+
+
+/////////////
+///////////
+// ✅ MODIFICADA: ModalRevisarNomina
+@Composable
+fun ModalRevisarNomina(
+    nomina: NominaResumen,
+    onCerrar: () -> Unit
+) {
+    val context = LocalContext.current
+
+    var estudiantes by remember { mutableStateOf<List<EstudianteNomina>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var editingField by remember { mutableStateOf<Pair<Int, String>?>(null) }
+
+    val listState = rememberLazyListState()
+    var scrollToEnd by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
+
+    LaunchedEffect(scrollToEnd) {
+        if (scrollToEnd && estudiantes.isNotEmpty()) {
+            listState.animateScrollToItem(estudiantes.size - 1)
+            scrollToEnd = false
+        }
+    }
+
+    LaunchedEffect(nomina.id) {
+        cargarEstudiantesDeNomina(
+            nominaId = nomina.id,
+            onSuccess = {
+                estudiantes = it
+                isLoading = false
+            },
+            onError = {
+                error = it
+                isLoading = false
+            }
+        )
+    }
+
+    AlertDialog(
+        onDismissRequest = onCerrar,
+        containerColor = BackgroundDefault,
+        title = {},
+        text = {
+            // Contenedor para superponer overlay dentro del modal
+            Box(modifier = Modifier.fillMaxSize()) {
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                ) {
+                    // ---------- TÍTULO ---------- //
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text("${nomina.institucion} : ${nomina.periodo}",
+                            fontWeight = FontWeight.ExtraBold, fontSize = 20.sp)
+                        Text(nomina.docente, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                        Text("${nomina.curso} ${nomina.paralelo} - ${nomina.asignatura}",
+                            fontWeight = FontWeight.Normal, fontSize = 18.sp)
+                    }
+
+                    when {
+                        isLoading -> {
+                            // 🔕 Sin circular aquí; el overlay (abajo) cubre el modal.
+                        }
+                        error != null -> Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                            Text("❌ Error: $error", color = Color.Red)
+                        }
+                        else -> {
+                            // ---------- CABECERA ---------- //
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 20.dp, bottom = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("  CÉDULA", fontWeight = FontWeight.ExtraBold,
+                                    modifier = Modifier.weight(0.25f))
+                                Text("  ESTUDIANTE", fontWeight = FontWeight.ExtraBold,
+                                    modifier = Modifier.weight(0.6f))
+                                Text("ACCIÓN", fontWeight = FontWeight.ExtraBold,
+                                    textAlign = TextAlign.Center, modifier = Modifier.weight(0.15f))
+                            }
+
+                            // ---------- LISTA ---------- //
+                            LazyColumn(
+                                state = listState,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f)
+                                    .drawBehind {
+                                        val strokeWidth = 1.dp.toPx()
+                                        drawLine(Color.Gray, Offset(0f, 0f), Offset(size.width, 0f), strokeWidth)
+                                    },
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                itemsIndexed(estudiantes, key = { _, it -> it.idUnico }) { index, est ->
+
+                                    val isCedulaEditing = editingField?.first == index && editingField?.second == "cedula"
+                                    val isNombreEditing = editingField?.first == index && editingField?.second == "nombre"
+
+                                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                        // ----- CÉDULA ----- //
+                                        if (isCedulaEditing) {
+                                            val focusRequesterCedula = remember { FocusRequester() }
+
+                                            OutlinedTextField(
+                                                value = est.cedula,
+                                                onValueChange = { nuevoValor ->
+                                                    val filtrado = nuevoValor.uppercase().filter { it.isLetterOrDigit() }
+                                                    estudiantes = estudiantes.toMutableList().also { lista ->
+                                                        lista[index] = lista[index].copy(cedula = filtrado)
+                                                    }
+                                                },
+                                                label = { Text("Cédula") },
+                                                singleLine = true,
+                                                modifier = Modifier
+                                                    .weight(0.25f)
+                                                    .focusRequester(focusRequesterCedula)
+                                                    .onFocusChanged { focusState ->
+                                                        if (focusState.isFocused) {
+                                                            editingField = index to "cedula"
+                                                        }
+                                                    },
+                                                keyboardOptions = KeyboardOptions(
+                                                    keyboardType = KeyboardType.Ascii,
+                                                    imeAction = ImeAction.Done
+                                                ),
+                                                keyboardActions = KeyboardActions(onDone = {
+                                                    estudiantes = estudiantes.toMutableList().also { lista ->
+                                                        val nuevo = lista[index]
+                                                        lista[index] = nuevo.copy(
+                                                            idUnico = generarIdUnicoEstudianteNomina(
+                                                                nuevo.cedula, nuevo.nombre
+                                                            )
+                                                        )
+                                                    }
+                                                    editingField = null
+                                                })
+                                            )
+                                            LaunchedEffect(Unit) { focusRequesterCedula.requestFocus() }
+                                        } else {
+                                            Text(
+                                                text = est.cedula.ifEmpty { "Cédula" },
+                                                color = if (est.cedula.isEmpty()) Color.Gray else Color.Black,
+                                                modifier = Modifier
+                                                    .weight(0.25f)
+                                                    .clickable { editingField = index to "cedula" }
+                                                    .padding(8.dp)
+                                            )
+                                        }
+
+                                        // ----- NOMBRE ----- //
+                                        if (isNombreEditing) {
+                                            val focusRequesterNombre = remember { FocusRequester() }
+
+                                            OutlinedTextField(
+                                                value = est.nombre,
+                                                onValueChange = { nuevoValor ->
+                                                    val filtrado = nuevoValor.uppercase()
+                                                        .filter { it.isLetter() || it.isWhitespace() }
+                                                    estudiantes = estudiantes.toMutableList().also { lista ->
+                                                        lista[index] = lista[index].copy(nombre = filtrado)
+                                                    }
+                                                },
+                                                label = { Text("Nombre") },
+                                                singleLine = true,
+                                                modifier = Modifier
+                                                    .weight(0.6f)
+                                                    .focusRequester(focusRequesterNombre)
+                                                    .onFocusChanged { focusState ->
+                                                        if (focusState.isFocused) {
+                                                            editingField = index to "nombre"
+                                                        }
+                                                    },
+                                                keyboardOptions = KeyboardOptions(
+                                                    keyboardType = KeyboardType.Text,
+                                                    imeAction = ImeAction.Done
+                                                ),
+                                                keyboardActions = KeyboardActions(onDone = {
+                                                    estudiantes = estudiantes.toMutableList().also { lista ->
+                                                        val nuevo = lista[index]
+                                                        lista[index] = nuevo.copy(
+                                                            idUnico = generarIdUnicoEstudianteNomina(
+                                                                nuevo.cedula, nuevo.nombre
+                                                            )
+                                                        )
+                                                    }
+                                                    editingField = null
+                                                })
+                                            )
+                                            LaunchedEffect(Unit) { focusRequesterNombre.requestFocus() }
+                                        } else {
+                                            Text(
+                                                text = est.nombre.ifEmpty { "Nombre" },
+                                                color = if (est.nombre.isEmpty()) Color.Gray else Color.Black,
+                                                modifier = Modifier
+                                                    .weight(0.6f)
+                                                    .clickable { editingField = index to "nombre" }
+                                                    .padding(8.dp)
+                                            )
+                                        }
+
+                                        // ----- ACCIÓN ----- //
+                                        val interaction = remember(est.idUnico) { MutableInteractionSource() }
+                                        Box(Modifier.weight(0.15f).wrapContentWidth(Alignment.CenterHorizontally)) {
+                                            IconButton(
+                                                onClick = {
+                                                    editingField = null
+                                                    estudiantes = estudiantes.toMutableList().also { it.removeAt(index) }
+                                                },
+                                                interactionSource = interaction
+                                            ) {
+                                                Icon(Icons.Default.Delete, "Eliminar estudiante", tint = Color.Red)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // ---------- BOTÓN AGREGAR ---------- //
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = 16.dp, bottom = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CustomButton(
+                            text = "➕  Agregar estudiante",
+                            borderColor = ButtonDarkSuccess,
+                            onClick = {
+                                val hayVacios = estudiantes.any { it.cedula.isBlank() || it.nombre.isBlank() }
+                                if (hayVacios) {
+                                    mensajealert(context, "⚠️ No puedes crear un nuevo registro si tienes otro vacío.")
+                                    return@CustomButton
+                                }
+
+                                // Cerrar edición activa si la hay
+                                editingField?.let { (index, _) ->
+                                    val est = estudiantes[index]
+                                    if (est.cedula.isNotBlank() && est.nombre.isNotBlank()) {
+                                        estudiantes = estudiantes.toMutableList().also { lista ->
+                                            lista[index] = lista[index].copy(
+                                                idUnico = generarIdUnicoEstudianteNomina(est.cedula, est.nombre)
+                                            )
+                                        }
+                                        editingField = null
+                                    } else {
+                                        mensajealert(context, "⚠️ Completa el estudiante antes de crear otro.")
+                                        return@CustomButton
+                                    }
+                                }
+
+                                val nuevoEstudiante = EstudianteNomina(
+                                    idUnico = generarIdUnicoEstudianteNomina("", ""),
+                                    cedula = "",
+                                    nombre = ""
+                                )
+                                estudiantes = estudiantes + nuevoEstudiante
+                                editingField = estudiantes.lastIndex to "cedula"
+                                scrollToEnd = true
+                            }
+                        )
+                    }
+
+                    // ---------- BOTONES FINALES ---------- //
+                    Row(Modifier.fillMaxWidth()) {
+                        Box(Modifier.weight(1f).wrapContentWidth(Alignment.CenterHorizontally)) {
+                            CustomButton("Guardar", ButtonDarkPrimary, onClick = {
+                                val hayVacios = estudiantes.any { it.cedula.isBlank() || it.nombre.isBlank() }
+                                if (hayVacios) {
+                                    mensajealert(context, "⚠️ Datos incompletos")
+                                    return@CustomButton
+                                }
+
+                                val estudiantesOrdenados = estudiantes.sortedBy { it.nombre }
+
+                                actualizarEstudiantesDeNomina(
+                                    nomina.id,
+                                    estudiantesOrdenados,
+                                    onSuccess = {
+                                        mensajealert(context, "✅ Datos actualizados")
+                                        editingField = null
+                                        cargarEstudiantesDeNomina(
+                                            nominaId = nomina.id,
+                                            onSuccess = {
+                                                estudiantes = it
+                                                coroutineScope.launch { listState.scrollToItem(0) }
+                                            },
+                                            onError = { msg ->
+                                                mensajealert(context, "⚠️ No se pudo recargar: $msg")
+                                            }
+                                        )
+                                    },
+                                    onError = { msg -> mensajealert(context, "❌ Error: $msg") }
+                                )
+                            })
+                        }
+
+                        Spacer(Modifier.width(16.dp))
+
+                        Box(Modifier.weight(1f).wrapContentWidth(Alignment.CenterHorizontally)) {
+                            CustomButton("Cerrar", ButtonDarkGray, onClick = onCerrar)
+                        }
+                    }
+                }
+
+                // ✅ Overlay de puntitos dentro del modal (reemplaza al circular)
+                LoadingDotsOverlay(isLoading = isLoading)
+            }
+        },
+        confirmButton = {},
+        dismissButton = {}
+    )
+}
+
+@Composable
+fun ModalConfirmarBorrar(
+    nomina: NominaResumen,
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit,
+    headerColor: Color = MaterialTheme.colorScheme.surfaceVariant
+) {
+    val shape = RoundedCornerShape(12.dp)
+    val isTablet = isTablet() // 👈 Usa tu misma función de detección
+
+    Dialog(onDismissRequest = onCancel) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            shape = shape,
+            tonalElevation = 4.dp,
+            shadowElevation = 4.dp,
+            color = BackgroundDefault,
+            contentColor = TextDefaultBlack
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 20.dp, horizontal = 40.dp)
+            ) {
+                // 🏷️ Título
+                Text(
+                    text = "¿Está seguro de borrar la nómina?",
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(Modifier.height(12.dp))
+                HorizontalDivider(
+                    thickness = 1.dp,
+                    color = LocalContentColor.current.copy(alpha = 0.5f)
+                )
+                Spacer(Modifier.height(12.dp))
+
+                // ⚠️ Banda de alerta centrada
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.error.copy(alpha = 0.08f))
+                        .padding(vertical = 16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = "Advertencia",
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "Esta acción es irreversible.",
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontWeight = FontWeight.SemiBold,
+                                textAlign = TextAlign.Center
+                            ),
+                            color = MaterialTheme.colorScheme.error,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(12.dp))
+
+                // 📋 Resumen responsive
+                if (isTablet) {
+                    // ✅ DOBLE COLUMNA en tablet
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp),
+                        horizontalArrangement = Arrangement.spacedBy(32.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            InfoItem(Icons.Default.School, "Institución", nomina.institucion)
+                            InfoItem(Icons.Default.Person, "Docente", nomina.docente)
+                            InfoItem(
+                                Icons.Default.Class,
+                                "Curso",
+                                "${nomina.curso}  ${nomina.paralelo}"
+                            )
+                        }
+
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            InfoItem(Icons.Default.AutoStories, "Asignatura", nomina.asignatura)
+                            InfoItem(Icons.Default.Star, "Especialidad", nomina.especialidad)
+                            InfoItem(Icons.Default.Event, "Periodo", nomina.periodo)
+                        }
+                    }
+                } else {
+                    // ✅ UNA SOLA COLUMNA en móvil
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp),
+                        verticalArrangement = Arrangement.spacedBy(1.dp)
+                    ) {
+                        InfoItem(Icons.Default.School, "Institución", nomina.institucion)
+                        InfoItem(Icons.Default.Person, "Docente", nomina.docente)
+                        InfoItem(
+                            Icons.Default.Class,
+                            "Curso",
+                            "${nomina.curso}  ${nomina.paralelo}"
+                        )
+                        InfoItem(Icons.Default.AutoStories, "Asignatura", nomina.asignatura)
+                        InfoItem(Icons.Default.Star, "Especialidad", nomina.especialidad)
+                        InfoItem(Icons.Default.Event, "Periodo", nomina.periodo)
+                    }
+                }
+
+                Spacer(Modifier.height(16.dp))
+
+                // 🔘 Acciones (50/50)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(Modifier.weight(1f)) {
+                        CustomButton(
+                            text = "Sí, borrar",
+                            borderColor = ButtonDarkError,
+                            onClick = onConfirm
+                        )
+                    }
+                    Box(Modifier.weight(1f)) {
+                        CustomButton(
+                            text = "Cancelar",
+                            borderColor = ButtonDarkGray,
+                            onClick = onCancel
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ModalEditarNomina(
+    nomina: NominaResumen,
+    onDismiss: () -> Unit,
+    onSaved: (NominaResumen) -> Unit
+) {
+    val context = LocalContext.current
+    var isSaving by remember { mutableStateOf(false) }
+
+    // Estados de los campos (clave por id para no mezclar formularios)
+    var institucion by rememberSaveable(nomina.id) { mutableStateOf(nomina.institucion) }
+    var docente by rememberSaveable(nomina.id) { mutableStateOf(nomina.docente) }
+    var curso by rememberSaveable(nomina.id) { mutableStateOf(nomina.curso) }
+    var paralelo by rememberSaveable(nomina.id) { mutableStateOf(nomina.paralelo) }
+    var asignatura by rememberSaveable(nomina.id) { mutableStateOf(nomina.asignatura) }
+    var especialidad by rememberSaveable(nomina.id) { mutableStateOf(nomina.especialidad) }
+    var periodo by rememberSaveable(nomina.id) { mutableStateOf(nomina.periodo) }
+
+    // Si quieres bloquear clic-fuera y back mientras guarda:
+    // Dialog(properties = DialogProperties(dismissOnBackPress = !isSaving, dismissOnClickOutside = !isSaving))
+    Dialog(onDismissRequest = { if (!isSaving) onDismiss() }) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            tonalElevation = 4.dp,
+            shadowElevation = 6.dp,
+            shape = RoundedCornerShape(12.dp),
+            color = BackgroundDefault
+        ) {
+            // Box raíz: el overlay se dibuja ENCIMA sin cambiar el tamaño
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                // (Opcional) limita la altura para evitar cualquier reflujo en pantallas pequeñas
+                // .heightIn(min = 0.dp, max = 600.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(BackgroundDefault) // asegura fondo uniforme
+                        .padding(vertical = 20.dp, horizontal = 20.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "Editar datos de la nómina",
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.Center
+                    )
+
+                    HorizontalDivider()
+
+                    OutlinedTextField(
+                        value = institucion,
+                        onValueChange = { institucion = it },
+                        label = { Text("Institución") },
+                        singleLine = true,
+                        enabled = !isSaving,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    OutlinedTextField(
+                        value = docente,
+                        onValueChange = { docente = it },
+                        label = { Text("Docente") },
+                        singleLine = true,
+                        enabled = !isSaving,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        OutlinedTextField(
+                            value = curso,
+                            onValueChange = { curso = it },
+                            label = { Text("Curso") },
+                            singleLine = true,
+                            enabled = !isSaving,
+                            modifier = Modifier.weight(1f)
+                        )
+                        OutlinedTextField(
+                            value = paralelo,
+                            onValueChange = { paralelo = it.uppercase() }, // siempre MAYÚSCULAS
+                            label = { Text("Paralelo") },
+                            singleLine = true,
+                            enabled = !isSaving,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
+                    OutlinedTextField(
+                        value = asignatura,
+                        onValueChange = { asignatura = it },
+                        label = { Text("Asignatura") },
+                        singleLine = true,
+                        enabled = !isSaving,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    OutlinedTextField(
+                        value = especialidad,
+                        onValueChange = { especialidad = it },
+                        label = { Text("Especialidad") },
+                        singleLine = true,
+                        enabled = !isSaving,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    OutlinedTextField(
+                        value = periodo,
+                        onValueChange = { periodo = it },
+                        label = { Text("Periodo") },
+                        singleLine = true,
+                        enabled = !isSaving,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(Modifier.height(4.dp))
+                    HorizontalDivider()
+                    Spacer(Modifier.height(4.dp))
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                        Box(Modifier.weight(1f)) {
+                            // No cambiamos el TEXTO para no variar el tamaño del botón
+                            CustomButton(
+                                text = "Guardar",
+                                borderColor = ButtonDarkPrimary,
+                                onClick = {
+                                    if (isSaving) return@CustomButton
+
+                                    val vacios = listOf(institucion, docente, curso, paralelo, asignatura, periodo)
+                                        .any { it.trim().isEmpty() }
+                                    if (vacios) {
+                                        mensajealert(context, "⚠️ Completa todos los campos obligatorios.")
+                                        return@CustomButton
+                                    }
+
+                                    isSaving = true
+                                    val actualizado = nomina.copy(
+                                        institucion = institucion.trim(),
+                                        docente = docente.trim(),
+                                        curso = curso.trim(),
+                                        paralelo = paralelo.trim().uppercase(), // refuerzo en el guardado
+                                        asignatura = asignatura.trim(),
+                                        especialidad = especialidad.trim(),
+                                        periodo = periodo.trim()
+                                    )
+
+                                    // Verificación por campos (case-sensitive si los guardas tal cual;
+                                    // si necesitas case-insensitive, usa tu versión normalizada).
+                                    existeNominaIgualPorCampos(
+                                        institucion = actualizado.institucion,
+                                        docente = actualizado.docente,
+                                        curso = actualizado.curso,
+                                        paralelo = actualizado.paralelo,
+                                        asignatura = actualizado.asignatura,
+                                        especialidad = actualizado.especialidad,
+                                        periodo = actualizado.periodo,
+                                        excluirId = nomina.id,
+                                        onResult = { duplicada ->
+                                            if (duplicada) {
+                                                isSaving = false
+                                                mensajealert(
+                                                    context,
+                                                    "⚠️  Ya existe una nómina con esos datos."
+                                                )
+                                            } else {
+                                                actualizarDatosNomina(
+                                                    nominaId = nomina.id,
+                                                    nominaActualizada = actualizado,
+                                                    onSuccess = {
+                                                        isSaving = false
+                                                        onSaved(actualizado)
+                                                    },
+                                                    onError = { msg ->
+                                                        isSaving = false
+                                                        mensajealert(context, "❌  Error al guardar: $msg")
+                                                    }
+                                                )
+                                            }
+                                        },
+                                        onError = { msg ->
+                                            isSaving = false
+                                            mensajealert(context, "❌  No se pudo verificar duplicados: $msg")
+                                        }
+                                    )
+                                }
+                            )
+                        }
+                        Box(Modifier.weight(1f)) {
+                            CustomButton(
+                                text = "Cancelar",
+                                borderColor = ButtonDarkGray,
+                                onClick = { if (!isSaving) onDismiss() }
+                            )
+                        }
+                    }
+                }
+
+                // 🔒 Overlay superpuesto sin alterar el layout
+                if (isSaving) {
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .zIndex(1f) // asegúralo arriba del contenido
+                            .background(BackgroundDefault.copy(alpha = 0.60f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        // Si tu LoadingDotsOverlay ya cubre todo, puedes llamarlo directo:
+                        // LoadingDotsOverlay(isLoading = true)
+                        // O deja un indicador simple aquí:
+                        LoadingDotsOverlay(isLoading = true)
+                    }
+                }
+            }
+        }
+    }
+}
+

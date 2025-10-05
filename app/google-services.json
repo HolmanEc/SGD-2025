@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1060775545609",
+    "project_id": "holmansgd-7c1f6",
+    "storage_bucket": "holmansgd-7c1f6.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1060775545609:android:3706dea55f5a0a75dc21d8",
+        "android_client_info": {
+          "package_name": "com.holman.sgd"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCmL3EDeAi61ip5m6kvP_j1jNm47pJYc6c"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
