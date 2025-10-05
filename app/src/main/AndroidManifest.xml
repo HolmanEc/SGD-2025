@@ -27,7 +27,7 @@
 
         <!-- LOGIN como primera pantalla -->
         <activity
-            android:name=".MainActivity"
+            android:name=".LoginActivity"
             android:exported="true"
             android:theme="@style/Theme.SGD">
 
@@ -37,10 +37,10 @@
             </intent-filter>
         </activity>
 
-        <!--<activity
+        <activity
            android:name=".MainActivity"
            android:exported="true"
-           android:theme="@style/Theme.SGD" />  -->
+           android:theme="@style/Theme.SGD" />
    </application>
 
 
