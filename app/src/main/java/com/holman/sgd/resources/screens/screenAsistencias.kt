@@ -53,12 +53,13 @@ data class NominaResumen(
 
 // 🔹 Data class para asistencia de estudiante con ID único
 data class EstudianteAsistencia(
-    val idUnico: String,         // 🔹 ID único inmutable basado en cédula
+    val idUnico: String,   // 🔹 ID único inmutable (col1 de la nómina)
     val numero: String,
-    val cedula: String,          // 🔹 Cédula del estudiante (col2)
+    val cedula: String,
     val nombre: String,
     val presente: Boolean = false
 )
+
 
 // 🔹 Función para hoy (yyyy-MM-dd)
 fun getHoy(): String {
@@ -195,9 +196,6 @@ fun Asistencias(navController: NavHostController) {
     }
 }
 
-
-/////////////
-// 🔹 Selector de fecha con calendario
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SelectorFecha(fecha: String, onFechaSeleccionada: (String) -> Unit) {
@@ -246,9 +244,6 @@ fun SelectorFecha(fecha: String, onFechaSeleccionada: (String) -> Unit) {
     }
 }
 
-////////
-
-// 🔹 Pantalla de detalle de asistencia
 @OptIn(ExperimentalMaterial3Api::class)
 @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
 @Composable
@@ -266,51 +261,36 @@ fun ScreenNominaDetalleAsistencia(
     // Estado unificado para overlay y visibilidad del FAB
     val isBusy by remember { derivedStateOf { isLoading || isSaving } }
 
+    // ✅ Cargar alumnos usando col1 como ID (y fallback legacy si no existe col1)
     LaunchedEffect(nomina.id) {
-        val db = FirebaseFirestore.getInstance()
-        db.collection("gestionAcademica")
-            .document("gestionNominas")
-            .collection("nominasEstudiantes")
-            .document(nomina.id)
-            .get()
-            .addOnSuccessListener { document ->
-                if (document.exists()) {
-                    val tabla = document.get("tabla") as? List<Map<String, Any>> ?: emptyList()
-                    alumnos.clear()
-                    alumnos.addAll(
-                        tabla.drop(1).mapIndexed { index, fila ->
-                            val cedula = fila["col2"]?.toString() ?: ""
-                            val nombre = fila["col3"]?.toString() ?: "Alumno desconocido"
-                            val numero = (index + 1).toString()
-                            EstudianteAsistencia(
-                                idUnico = generarIdUnicoEstudiante(cedula, nombre),
-                                numero = numero,
-                                cedula = cedula,
-                                nombre = nombre
-                            )
-                        }
-                    )
+        isLoading = true
+        cargarAlumnosAsistenciaPorNomina(
+            nominaId = nomina.id,
+            onSuccess = { lista ->
+                alumnos.clear()
+                alumnos.addAll(lista)
 
-                    cargarAsistenciaExistente(
-                        nominaId = nomina.id,
-                        fecha = fecha,
-                        onSuccess = { asistenciaMap ->
-                            aplicarAsistenciaCargada(alumnos, asistenciaMap)
-                            limpiarAsistenciasHuerfanas(nomina.id, fecha, alumnos)
-                        },
-                        onError = {}
-                    )
-                } else {
-                    mensajealert(context, "❌ Nómina no encontrada")
-                }
+                // Cargar asistencia del día seleccionado y aplicarla
+                cargarAsistenciaExistente(
+                    nominaId = nomina.id,
+                    fecha = fecha,
+                    onSuccess = { asistenciaMap ->
+                        aplicarAsistenciaCargada(alumnos, asistenciaMap)
+                        limpiarAsistenciasHuerfanas(nomina.id, fecha, alumnos)
+                    },
+                    onError = {}
+                )
+
                 isLoading = false
-            }
-            .addOnFailureListener {
+            },
+            onError = { msg ->
                 isLoading = false
-                mensajealert(context, "❌ Error cargando alumnos")
+                mensajealert(context, "❌ $msg")
             }
+        )
     }
 
+    // Re-cargar y aplicar asistencia al cambiar la fecha
     LaunchedEffect(fecha) {
         if (alumnos.isNotEmpty()) {
             cargarAsistenciaExistente(
@@ -441,11 +421,6 @@ fun ScreenNominaDetalleAsistencia(
     }
 }
 
-
-
-/////////
-////////////////////
-// 🔹 Cargar asistencia existente
 fun cargarAsistenciaExistente(
     nominaId: String,
     fecha: String,
@@ -478,7 +453,6 @@ fun cargarAsistenciaExistente(
         .addOnFailureListener { exception -> onError(exception.localizedMessage ?: "Error desconocido") }
 }
 
-// 🔹 Aplicar asistencia cargada con compatibilidad hacia atrás
 fun aplicarAsistenciaCargada(
     alumnos: MutableList<EstudianteAsistencia>,
     asistenciaMap: Map<String, Boolean>
@@ -494,7 +468,6 @@ fun aplicarAsistenciaCargada(
     }
 }
 
-// 🔹 Limpiar asistencias huérfanas (de estudiantes que ya no existen)
 fun limpiarAsistenciasHuerfanas(
     nominaId: String,
     fecha: String,
@@ -545,7 +518,7 @@ fun limpiarAsistenciasHuerfanas(
     }
 }
 
-// 🔹 Guardar asistencia usando ID único
+
 fun guardarAsistenciaFirestore(
     nominaId: String,
     fecha: String,
@@ -606,5 +579,71 @@ fun cargarNominasDesdeFirestore(
         }
         .addOnFailureListener { exception ->
             onError(exception.localizedMessage ?: "Error desconocido")
+        }
+}
+
+fun cargarAlumnosAsistenciaPorNomina(
+    nominaId: String,
+    onSuccess: (List<EstudianteAsistencia>) -> Unit,
+    onError: (String) -> Unit
+) {
+    val db = FirebaseFirestore.getInstance()
+    db.collection("gestionAcademica")
+        .document("gestionNominas")
+        .collection("nominasEstudiantes")
+        .document(nominaId)
+        .get()
+        .addOnSuccessListener { document ->
+            if (!document.exists()) {
+                onError("Nómina no encontrada"); return@addOnSuccessListener
+            }
+
+            val tabla = document.get("tabla") as? List<Map<String, Any?>> ?: emptyList()
+            if (tabla.isEmpty()) { onSuccess(emptyList()); return@addOnSuccessListener }
+
+            val cuerpo = tabla.drop(1) // saltar encabezado
+
+            val alumnos = cuerpo.mapIndexed { index, fila ->
+                val col1 = (fila["col1"] as? String)?.trim().orEmpty() // ID (nuevo) o N° (antiguo)
+                val col2 = (fila["col2"] as? String)?.trim().orEmpty() // Nro
+                val col3 = (fila["col3"] as? String)?.trim().orEmpty() // Cédula
+                val col4 = (fila["col4"] as? String)?.trim().orEmpty() // Estudiante
+
+                // Compatibilidad con nóminas antiguas (sin col1=ID):
+                val cedula = if (col3.isNotEmpty())
+                    col3
+                else
+                    (fila["Cédula"] ?: fila["col2"] ?: "").toString().trim()
+
+                val nombre = if (col4.isNotEmpty())
+                    col4
+                else
+                    (fila["Estudiante"] ?: fila["col3"] ?: "").toString().trim()
+                        .ifEmpty { "Alumno desconocido" }
+
+                val numero = if (col2.isNotEmpty())
+                    col2
+                else
+                    (fila["N°"] ?: fila["col1"] ?: (index + 1)).toString()
+
+                // ✅ Usar SIEMPRE el ID de col1 cuando exista (nuevo esquema).
+                // Fallback legacy SOLO si la nómina es vieja y no trae col1 como ID.
+                val id = if (col1.isNotEmpty() && col1 != "ID")
+                    col1
+                else
+                    generarIdUnicoEstudiante(cedula, nombre) // ↩︎ mismo esquema legacy de esta screen
+
+                EstudianteAsistencia(
+                    idUnico = id,
+                    numero = numero,
+                    cedula = cedula,
+                    nombre = nombre
+                )
+            }
+
+            onSuccess(alumnos)
+        }
+        .addOnFailureListener { e ->
+            onError(e.localizedMessage ?: "Error al cargar nómina")
         }
 }

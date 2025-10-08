@@ -5,10 +5,6 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.util.Patterns
-import android.view.Gravity
-import android.widget.TextView
-import android.widget.Toast
-import android.graphics.drawable.GradientDrawable
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
@@ -52,13 +48,8 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.holman.sgd.resources.CustomButton
 import com.holman.sgd.resources.mensajealert
-import com.holman.sgd.ui.theme.BackgroundDefault
-import com.holman.sgd.ui.theme.ButtonDarkError
-import com.holman.sgd.ui.theme.ButtonDarkGray
-import com.holman.sgd.ui.theme.ButtonDarkSuccess
-import com.holman.sgd.ui.theme.ButtonWhitePrimary
-import com.holman.sgd.ui.theme.TextDefaultBlack
-import com.holman.sgd.ui.theme.TextDefaultWhite
+import com.holman.sgd.resources.screens.isTablet
+import com.holman.sgd.ui.theme.*
 
 
 private const val USUARIOS_COLLECTION = "usuarios" // ajusta si se llama distinto
@@ -438,30 +429,71 @@ fun LoginScreen(
 
             Spacer(Modifier.height(12.dp))
 
+
             // ===== Recordar correo + Olvidé mi contraseña =====
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Checkbox(
-                    checked = rememberEmail,
-                    onCheckedChange = { rememberEmail = it },
-                    colors = CheckboxDefaults.colors(
-                        checkedColor = ButtonDarkSuccess,
-                        uncheckedColor = TextDefaultWhite,
-                        checkmarkColor = TextDefaultWhite
+            if (isTablet()) {
+                // ✅ Tablet: en una sola fila como ya lo tenías
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Checkbox(
+                        checked = rememberEmail,
+                        onCheckedChange = { rememberEmail = it },
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = ButtonDarkSuccess,
+                            uncheckedColor = TextDefaultWhite,
+                            checkmarkColor = TextDefaultWhite
+                        )
                     )
-                )
-                Text("Recordar mi correo", color = TextDefaultWhite)
+                    Text("Recordar mi correo", color = TextDefaultWhite)
 
-                Spacer(Modifier.weight(1f))
+                    Spacer(Modifier.weight(1f))
 
-                Text(
-                    text = "¿Olvidaste tu contraseña?",
-                    color = TextDefaultWhite.copy(alpha = 0.9f),
-                    style = MaterialTheme.typography.bodyMedium,
+                    Text(
+                        text = "¿Olvidaste tu contraseña?",
+                        color = TextDefaultWhite.copy(alpha = 0.9f),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier
+                            .clickable {
+                                if (email.isNotBlank() && Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
+                                    sendResetEmail(auth, context, email)
+                                } else {
+                                    resetEmail = email
+                                    showResetDialog = true
+                                }
+                            }
+                            .padding(start = 8.dp)
+                    )
+                }
+            } else {
+                // 📱 Teléfono: uno debajo del otro
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier
-                        .clickable {
+                        .fillMaxWidth()
+                        .wrapContentHeight()
+                        .align(Alignment.CenterHorizontally)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = rememberEmail,
+                            onCheckedChange = { rememberEmail = it },
+                            colors = CheckboxDefaults.colors(
+                                checkedColor = ButtonDarkSuccess,
+                                uncheckedColor = TextDefaultWhite,
+                                checkmarkColor = TextDefaultWhite
+                            )
+                        )
+                        Text("Recordar mi correo", color = TextDefaultWhite)
+                    }
+
+                    Text(
+                        text = "¿Olvidaste tu contraseña?",
+                        color = TextDefaultWhite.copy(alpha = 0.9f),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.clickable {
                             if (email.isNotBlank() && Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
                                 sendResetEmail(auth, context, email)
                             } else {
@@ -469,8 +501,8 @@ fun LoginScreen(
                                 showResetDialog = true
                             }
                         }
-                        .padding(start = 8.dp)
-                )
+                    )
+                }
             }
 
             Spacer(Modifier.height(22.dp))

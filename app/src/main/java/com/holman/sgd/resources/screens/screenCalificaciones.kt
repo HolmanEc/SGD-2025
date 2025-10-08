@@ -2,45 +2,26 @@ package com.holman.sgd.resources
 
 import android.annotation.SuppressLint
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.zIndex
 import androidx.navigation.NavHostController
 import com.google.firebase.firestore.FirebaseFirestore
-import com.holman.sgd.resources.components.getColorsCardsInicio
+import com.holman.sgd.resources.calificaciones.*
+import com.holman.sgd.resources.calificaciones.TablaConfig.INSUMOS_COUNT
 import com.holman.sgd.ui.theme.*
 
-/* ---------------- VARIABLE GLOBAL ---------------- */
-const val INSUMOS_COUNT = 5
 
-/* ---------------- PANTALLA PRINCIPAL ---------------- */
 @Composable
 fun Calificaciones(navController: NavHostController) {
     var nominas by remember { mutableStateOf<List<NominaResumen>>(emptyList()) }
@@ -153,412 +134,6 @@ fun Calificaciones(navController: NavHostController) {
     }
 }
 
-
-////
-///
-/* ---------------- DATOS ---------------- */
-data class EstudianteCalificacion(
-    val idUnico: String,
-    val numero: Int,
-    val nombre: String,
-    val notas: MutableList<Double?> // editable
-)
-
-/* ---------------- EXTENSIÓN PARA BORDES ---------------- */
-fun Modifier.cellBorder(
-    indexRow: Int,
-    indexCol: Int,
-    totalRows: Int,
-    totalCols: Int,
-    drawOuterTop: Boolean = true,
-    drawOuterLeft: Boolean = true,
-    drawOuterRight: Boolean = true,
-    drawOuterBottom: Boolean = true
-): Modifier {
-    return this.then(
-        Modifier.drawBehind {
-            val strokeWidth = 1.dp.toPx()
-            val color = Color.Black
-            if (indexRow < totalRows - 1) {
-                drawLine(
-                    color,
-                    Offset(0f, size.height),
-                    Offset(size.width, size.height),
-                    strokeWidth
-                )
-            }
-            if (indexCol < totalCols - 1) {
-                drawLine(
-                    color,
-                    Offset(size.width, 0f),
-                    Offset(size.width, size.height),
-                    strokeWidth
-                )
-            }
-            if (indexRow == 0 && drawOuterTop) {
-                drawLine(color, Offset(0f, 0f), Offset(size.width, 0f), strokeWidth)
-            }
-            if (indexCol == 0 && drawOuterLeft) {
-                drawLine(color, Offset(0f, 0f), Offset(0f, size.height), strokeWidth)
-            }
-            if (indexCol == totalCols - 1 && drawOuterRight) {
-                drawLine(
-                    color,
-                    Offset(size.width, 0f),
-                    Offset(size.width, size.height),
-                    strokeWidth
-                )
-            }
-            if (indexRow == totalRows - 1 && drawOuterBottom) {
-                drawLine(
-                    color,
-                    Offset(0f, size.height),
-                    Offset(size.width, size.height),
-                    strokeWidth
-                )
-            }
-        }
-    )
-}
-
-/* ---------------- CONFIGURACIÓN TABLA ---------------- */
-data class ConfigTabla(
-    val colWidthNotas: Int = 90,
-    val colWidthId: Int = 35,
-    val colWidthNombre: Int = 200,
-    val rowHeight: Int = 42
-)
-
-data class ConfigTablaColores(
-    val borde: Color = BordeTablaGray,
-    val encabezadoPrincipal: Color = FondoEncabezadoPrincipal,
-    val encabezadoSecundario: Color = FondoEncabezadoSecundario,
-    val encabezadoSumativa: Color = FondoEncabezadoSumativa,
-    val encabezadoFinales: Color = FondoEncabezadoFinales,
-    val textoEncabezado: Color = TextoEncabezado,
-    val textoEncabezadoSecundario: Color = TextoEncabezado,
-    val notasPar: Color = FondoFilaPar,
-    val notasImpar: Color = FondoFilaImpar,
-    val aprobado: Color = TextoAprobado,
-    val reprobado: Color = TextoReprobado
-)
-
-/* ---------------- TABLA ---------------- */
-@Composable
-fun TablaCalificaciones(
-    estudiantes: List<EstudianteCalificacion>,
-    nominaId: String,
-    onRefresh: () -> Unit,
-    config: ConfigTabla = ConfigTabla(),
-    colores: ConfigTablaColores = ConfigTablaColores()
-) {
-    val scrollStateX = rememberScrollState()
-    var editingCell by remember { mutableStateOf<Pair<String, Int>?>(null) }
-    var editingValue by remember { mutableStateOf(TextFieldValue("")) }
-
-    val headersGrupo1 = listOf("ID", "ESTUDIANTE")
-    val headersFormativa = (1..INSUMOS_COUNT).map { "ACTIVIDAD $it" }
-    val headersSumativa = listOf("PROYECTO", "EVALUACION", "REFUERZO", "MEJORA")
-    val headersFinales = listOf(
-        "EV TRIMESTRAL",
-        "EV FORMATIVA",
-        "EV SUMATIVA",
-        "PROMEDIO",
-        "CUALITATIVO A",
-        "CUALITATIVO B"
-    )
-    val totalCols =
-        headersGrupo1.size + headersFormativa.size + headersSumativa.size + headersFinales.size
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .clip(RoundedCornerShape(16.dp))
-            .border(
-                width = 2.dp,
-                color = BordeTablaGray,
-                shape = RoundedCornerShape(16.dp)
-            )
-    )
-    {
-        Column {
-            /* -------- ENCABEZADOS MULTINIVEL -------- */
-            Row {
-                Column {
-                    Box(
-                        modifier = Modifier
-                            .width((config.colWidthId + config.colWidthNombre).dp)
-                            .height(config.rowHeight.dp)
-                            .background(colores.encabezadoPrincipal)
-                            .cellBorder(0, 0, 2, totalCols, drawOuterBottom = false),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            "DATOS PERSONALES",
-                            color = colores.textoEncabezado,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp
-                        )
-                    }
-                    Row {
-                        headersGrupo1.forEachIndexed { i, h ->
-                            Box(
-                                modifier = Modifier
-                                    .width(if (h == "ID") config.colWidthId.dp else config.colWidthNombre.dp)
-                                    .height(config.rowHeight.dp)
-                                    .background(colores.encabezadoSecundario)
-                                    .cellBorder(1, i, 2, totalCols, drawOuterBottom = true),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    h,
-                                    color = colores.textoEncabezadoSecundario,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 12.sp
-                                )
-                            }
-                        }
-                    }
-                }
-                Row(modifier = Modifier.horizontalScroll(scrollStateX)) {
-                    Column {
-                        Row {
-                            Box(
-                                modifier = Modifier
-                                    .width((config.colWidthNotas * headersFormativa.size).dp)
-                                    .height(config.rowHeight.dp)
-                                    .background(colores.encabezadoPrincipal)
-                                    .cellBorder(
-                                        0,
-                                        headersGrupo1.size,
-                                        2,
-                                        totalCols,
-                                        drawOuterBottom = false
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    "EVALUACIÓN FORMATIVA (70%)",
-                                    color = colores.textoEncabezado,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 12.sp
-                                )
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .width((config.colWidthNotas * headersSumativa.size).dp)
-                                    .height(config.rowHeight.dp)
-                                    .background(colores.encabezadoSumativa)
-                                    .cellBorder(
-                                        0,
-                                        headersGrupo1.size + headersFormativa.size,
-                                        2,
-                                        totalCols,
-                                        drawOuterBottom = false
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    "EVALUACIÓN SUMATIVA (30%)",
-                                    color = colores.textoEncabezado,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 12.sp
-                                )
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .width((config.colWidthNotas * headersFinales.size).dp)
-                                    .height(config.rowHeight.dp)
-                                    .background(colores.encabezadoFinales)
-                                    .cellBorder(
-                                        0,
-                                        headersGrupo1.size + headersFormativa.size + headersSumativa.size,
-                                        2,
-                                        totalCols,
-                                        drawOuterBottom = false
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    "PROMEDIOS FINALES",
-                                    color = colores.textoEncabezado,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 12.sp
-                                )
-                            }
-                        }
-                        Row {
-                            (headersFormativa + headersSumativa + headersFinales).forEachIndexed { j, h ->
-                                Box(
-                                    modifier = Modifier
-                                        .width(config.colWidthNotas.dp)
-                                        .height(config.rowHeight.dp)
-                                        .background(colores.encabezadoSecundario)
-                                        .cellBorder(
-                                            1,
-                                            headersGrupo1.size + j,
-                                            2,
-                                            totalCols,
-                                            drawOuterBottom = true
-                                        ),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        h,
-                                        color = colores.textoEncabezadoSecundario,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 11.sp,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            /* -------- CUERPO TABLA -------- */
-            LazyColumn(modifier = Modifier.fillMaxSize()) {
-                itemsIndexed(estudiantes) { index, est ->
-                    val totalRows = estudiantes.size
-                    Row {
-                        // ID
-                        Box(
-                            modifier = Modifier
-                                .width(config.colWidthId.dp)
-                                .height(config.rowHeight.dp)
-                                .background(colores.encabezadoSecundario)
-                                .cellBorder(
-                                    index,
-                                    0,
-                                    totalRows,
-                                    totalCols,
-                                    drawOuterTop = index != 0
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                est.numero.toString(),
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = colores.textoEncabezadoSecundario
-                            )
-                        }
-                        // Nombre
-                        Box(
-                            modifier = Modifier
-                                .width(config.colWidthNombre.dp)
-                                .height(config.rowHeight.dp)
-                                .background(colores.encabezadoSecundario)
-                                .cellBorder(
-                                    index,
-                                    1,
-                                    totalRows,
-                                    totalCols,
-                                    drawOuterTop = index != 0
-                                ),
-                            contentAlignment = Alignment.CenterStart
-                        ) {
-                            Text(
-                                est.nombre,
-                                fontSize = 12.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(start = 4.dp),
-                                color = colores.textoEncabezadoSecundario
-                            )
-                        }
-                        // Notas
-                        Row(modifier = Modifier.horizontalScroll(scrollStateX)) {
-                            est.notas.forEachIndexed { j, nota ->
-                                val colIndex = headersGrupo1.size + j
-                                Box(
-                                    modifier = Modifier
-                                        .width(config.colWidthNotas.dp)
-                                        .height(config.rowHeight.dp)
-                                        .background(if (index % 2 == 0) colores.notasPar else colores.notasImpar)
-                                        .cellBorder(
-                                            index,
-                                            colIndex,
-                                            totalRows,
-                                            totalCols,
-                                            drawOuterTop = index != 0
-                                        ),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    /////////////
-                                    if (editingCell == est.idUnico to j) {
-                                        BasicTextField(
-                                            value = editingValue.text,
-                                            onValueChange = { newValue ->
-                                                editingValue = TextFieldValue(newValue)
-                                                val num = newValue.toDoubleOrNull()
-                                                if (num != null && num in 1.0..10.0) {
-                                                    est.notas[j] = num
-                                                } else if (newValue.isBlank()) {
-                                                    est.notas[j] = null
-                                                }
-                                            },
-                                            modifier = Modifier
-                                                .width(config.colWidthNotas.dp)
-                                                .wrapContentHeight(align = Alignment.CenterVertically),
-                                            textStyle = LocalTextStyle.current.copy(
-                                                fontSize = 12.sp,
-                                                textAlign = TextAlign.Center,
-                                                color = Color.Black
-                                            ),
-                                            singleLine = true,
-                                            keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Next),
-                                            keyboardActions = KeyboardActions(
-                                                onNext = {
-                                                    // 👉 Busca la siguiente fila en la misma columna
-                                                    val currentIndex =
-                                                        estudiantes.indexOfFirst { it.idUnico == est.idUnico }
-                                                    val nextIndex = currentIndex + 1
-                                                    if (nextIndex < estudiantes.size) {
-                                                        val siguienteEst = estudiantes[nextIndex]
-                                                        editingCell = siguienteEst.idUnico to j
-                                                        editingValue = TextFieldValue(
-                                                            siguienteEst.notas[j]?.toString() ?: ""
-                                                        )
-                                                    } else {
-                                                        // 👉 Si no hay más filas, salir de edición
-                                                        editingCell = null
-                                                    }
-                                                }
-                                            )
-                                        )
-                                    } else {
-                                        Text(
-                                            text = nota?.let { String.format("%.2f", it) } ?: "-",
-                                            color = if (nota != null && nota < 7.0) colores.reprobado else colores.aprobado,
-                                            fontSize = 12.sp,
-                                            textAlign = TextAlign.Center,
-                                            modifier = Modifier.clickable {
-                                                editingCell = est.idUnico to j
-                                                editingValue =
-                                                    TextFieldValue(nota?.toString() ?: "")
-                                            }
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-//////////////
-/* ---------------- DETALLE ---------------- */
-
-
-
-
-//////
 @OptIn(ExperimentalMaterial3Api::class)
 @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
 @Composable
@@ -570,7 +145,7 @@ fun ScreenNominaDetalleCalificaciones(
     val context = LocalContext.current
 
     var isLoading by remember { mutableStateOf(true) }
-    var estudiantes by remember { mutableStateOf<List<EstudianteCalificacion>>(emptyList()) }
+    var estudiantes by remember { mutableStateOf<List<TablaConfig.EstudianteCalificacion>>(emptyList()) }
     var isSaving by remember { mutableStateOf(false) } // controla overlay durante guardado
     val isBusy by remember { derivedStateOf { isLoading || isSaving } }
 
@@ -654,10 +229,12 @@ fun ScreenNominaDetalleCalificaciones(
                             Spacer(Modifier.size(1.dp))
                         }
                         else -> {
+                            val colores = TablaColors.fromNomina(headerColor) // usa el color de la nómina
                             TablaCalificaciones(
-                                estudiantes = estudiantes.toMutableList(),
+                                estudiantes = estudiantes,
                                 nominaId = nomina.id,
-                                onRefresh = { refresh(fromSave = false) }
+                                onRefresh = { refresh(fromSave = false) },
+                                colores = colores
                             )
                         }
                     }
@@ -671,106 +248,175 @@ fun ScreenNominaDetalleCalificaciones(
     }
 }
 
-
-//////
-/* ---------------- GUARDAR FIRESTORE ---------------- */
 fun guardarCalificacionesEnFirestore(
     nominaId: String,
-    estudiantes: List<EstudianteCalificacion>,
+    estudiantes: List<TablaConfig.EstudianteCalificacion>,
     onComplete: () -> Unit
 ) {
     val db = FirebaseFirestore.getInstance()
-    val batch = db.batch()
     val refNomina = db.collection("gestionAcademica")
         .document("gestionNominas")
         .collection("nominasEstudiantes")
         .document(nominaId)
+    val colCalificaciones = refNomina.collection("calificaciones")
 
-    estudiantes.forEach { est ->
-        val docRef = refNomina.collection("calificaciones").document(est.idUnico)
-        val data = mapOf(
-            "nombre" to est.nombre,
-            "actividades" to est.notas.take(INSUMOS_COUNT),
-            "proyecto" to est.notas.getOrNull(INSUMOS_COUNT),
-            "evaluacion" to est.notas.getOrNull(INSUMOS_COUNT + 1),
-            "refuerzo" to est.notas.getOrNull(INSUMOS_COUNT + 2),
-            "mejora" to est.notas.getOrNull(INSUMOS_COUNT + 3),
-            "updatedAt" to System.currentTimeMillis()
-        )
-        batch.set(docRef, data, com.google.firebase.firestore.SetOptions.merge())
-    }
-    batch.commit().addOnSuccessListener { onComplete() }
+    // 1) Leer _config para respetar el insumosCount real de la nómina
+    colCalificaciones.document("_config").get()
+        .addOnSuccessListener { cfg ->
+            val insumosCount = (cfg.getLong("insumosCount") ?: INSUMOS_COUNT.toLong()).toInt()
+
+            // 2) Guardar por idUnico (col1)
+            val batch = db.batch()
+            estudiantes.forEach { est ->
+                val docRef = colCalificaciones.document(est.idUnico)  // ✅ idUnico inmutable
+                val data = mapOf(
+                    "nombre" to est.nombre,
+                    "actividades" to est.notas.take(insumosCount),
+                    "proyecto" to est.notas.getOrNull(insumosCount),
+                    "evaluacion" to est.notas.getOrNull(insumosCount + 1),
+                    "refuerzo" to est.notas.getOrNull(insumosCount + 2),
+                    "mejora" to est.notas.getOrNull(insumosCount + 3),
+                    "updatedAt" to System.currentTimeMillis()
+                )
+                batch.set(docRef, data, com.google.firebase.firestore.SetOptions.merge())
+            }
+            batch.commit().addOnSuccessListener { onComplete() }
+                .addOnFailureListener { onComplete() } // evitamos colgar la UI
+        }
+        .addOnFailureListener {
+            // Si no hay _config, usamos el valor por defecto y guardamos igual
+            val insumosCount = INSUMOS_COUNT
+            val batch = db.batch()
+            estudiantes.forEach { est ->
+                val docRef = colCalificaciones.document(est.idUnico)
+                val data = mapOf(
+                    "nombre" to est.nombre,
+                    "actividades" to est.notas.take(insumosCount),
+                    "proyecto" to est.notas.getOrNull(insumosCount),
+                    "evaluacion" to est.notas.getOrNull(insumosCount + 1),
+                    "refuerzo" to est.notas.getOrNull(insumosCount + 2),
+                    "mejora" to est.notas.getOrNull(insumosCount + 3),
+                    "updatedAt" to System.currentTimeMillis()
+                )
+                batch.set(docRef, data, com.google.firebase.firestore.SetOptions.merge())
+            }
+            batch.commit().addOnCompleteListener { onComplete() }
+        }
 }
 
-/* ---------------- CARGAR FIRESTORE ---------------- */
 fun cargarCalificacionesDesdeFirestore(
     nominaId: String,
-    onSuccess: (List<EstudianteCalificacion>) -> Unit,
+    onSuccess: (List<TablaConfig.EstudianteCalificacion>) -> Unit,
     onError: (String) -> Unit
 ) {
     val db = FirebaseFirestore.getInstance()
-    val ref = db.collection("gestionAcademica")
+    val refNomina = db.collection("gestionAcademica")
         .document("gestionNominas")
         .collection("nominasEstudiantes")
         .document(nominaId)
-        .collection("calificaciones")
+    val colCalificaciones = refNomina.collection("calificaciones")
 
-    ref.get()
-        .addOnSuccessListener { snap ->
-            val estudiantes = snap.documents
-                .filter { it.id != "_config" }
-                .map { doc ->
-                    val idUnico = doc.id
-                    val nombre = doc.getString("nombre") ?: "Alumno"
+    // 1) Leer la TABLA para obtener el roster (col1..col4)
+    refNomina.get()
+        .addOnSuccessListener { nominaDoc ->
+            if (!nominaDoc.exists()) {
+                onError("Nómina no encontrada"); return@addOnSuccessListener
+            }
 
-                    val actividades = (doc.get("actividades") as? List<Number?>)
-                        ?.map { it?.toDouble() }
-                        ?: List(INSUMOS_COUNT) { null }
+            val tabla = nominaDoc.get("tabla") as? List<Map<String, Any?>> ?: emptyList()
+            val filas = tabla.drop(1) // saltar encabezado
+            // Roster: idUnico (col1), nro (col2), cedula (col3), nombre (col4)
+            data class Roster(val id: String, val nro: Int, val ced: String, val nom: String)
+            val roster = filas.mapIndexed { idx, fila ->
+                val id    = (fila["col1"] as? String).orEmpty().trim()
+                val nroS  = (fila["col2"] as? String).orEmpty().trim()
+                val nro   = nroS.toIntOrNull() ?: (idx + 1)
+                val ced   = (fila["col3"] as? String).orEmpty().trim()
+                val nom   = (fila["col4"] as? String).orEmpty().trim().ifEmpty { "Alumno" }
+                Roster(id = id, nro = nro, ced = ced, nom = nom)
+            }
 
-                    val proyecto = doc.getDouble("proyecto")
-                    val evaluacion = doc.getDouble("evaluacion")
-                    val refuerzo = doc.getDouble("refuerzo")
-                    val mejora = doc.getDouble("mejora")
+            // Si la tabla está vacía devolvemos lista vacía
+            if (roster.isEmpty()) { onSuccess(emptyList()); return@addOnSuccessListener }
 
-                    val actividadesValidas = actividades.filterNotNull()
-                    val evFormativa = if (actividadesValidas.isNotEmpty())
-                        actividadesValidas.average() * 0.7 else null
+            // 2) Leer _config para conocer insumosCount
+            colCalificaciones.document("_config").get()
+                .addOnSuccessListener { cfg ->
+                    val insumosCount = (cfg.getLong("insumosCount") ?: INSUMOS_COUNT.toLong()).toInt()
 
-                    val sumativas = listOfNotNull(proyecto, evaluacion, refuerzo, mejora)
-                    val evSumativa = if (sumativas.isNotEmpty())
-                        sumativas.average() * 0.3 else null
+                    // 3) Leer calificaciones existentes
+                    colCalificaciones.get()
+                        .addOnSuccessListener { snap ->
+                            // Índices para fallback (docs antiguos)
+                            val porId = mutableMapOf<String, Map<String, Any?>>()
+                            val porCed = mutableMapOf<String, Map<String, Any?>>()
+                            val porNom = mutableMapOf<String, Map<String, Any?>>()
 
-                    val evTrimestral = if (evFormativa != null && evSumativa != null)
-                        evFormativa + evSumativa else null
-                    val promedio = evTrimestral
+                            snap.documents.forEach { doc ->
+                                if (doc.id == "_config") return@forEach
+                                val data = doc.data ?: return@forEach
+                                porId[doc.id] = data
+                                (data["cedula"] as? String)?.trim()?.uppercase()?.let { if (it.isNotEmpty()) porCed[it] = data }
+                                (data["nombre"] as? String)?.trim()?.uppercase()?.let { if (it.isNotEmpty()) porNom[it] = data }
+                            }
 
-                    val cualitativoA: Double? = null
-                    val cualitativoB: Double? = null
+                            // 4) Construir lista final en orden por Nro (col2)
+                            val lista = roster.sortedBy { it.nro }.map { r ->
+                                // Buscar primero por idUnico (col1), luego por cédula, luego por nombre
+                                val data = porId[r.id]
+                                    ?: (if (r.ced.isNotBlank()) porCed[r.ced.uppercase()] else null)
+                                    ?: porNom[r.nom.uppercase()]
 
-                    val notas = actividades +
-                            listOf(proyecto, evaluacion, refuerzo, mejora) +
-                            listOf(
-                                evTrimestral,
-                                evFormativa,
-                                evSumativa,
-                                promedio,
-                                cualitativoA,
-                                cualitativoB
-                            )
+                                // Actividades (formativas)
+                                val actividades: List<Double?> =
+                                    (data?.get("actividades") as? List<*>)
+                                        ?.map { (it as? Number)?.toDouble() }
+                                        ?.let { list ->
+                                            // Normalizar a insumosCount
+                                            if (list.size >= insumosCount) list.take(insumosCount)
+                                            else list + List(insumosCount - list.size) { null }
+                                        }
+                                        ?: List(insumosCount) { null }
 
-                    EstudianteCalificacion(
-                        idUnico = idUnico,
-                        numero = 0,
-                        nombre = nombre,
-                        notas = notas.toMutableList()
-                    )
+                                // Sumativas (4)
+                                val proyecto   = (data?.get("proyecto") as? Number)?.toDouble()
+                                val evaluacion = (data?.get("evaluacion") as? Number)?.toDouble()
+                                val refuerzo   = (data?.get("refuerzo") as? Number)?.toDouble()
+                                val mejora     = (data?.get("mejora") as? Number)?.toDouble()
+
+                                // Cálculos derivados (misma lógica que tenías)
+                                val actValidas = actividades.filterNotNull()
+                                val evFormativa = if (actValidas.isNotEmpty()) actValidas.average() * 0.7 else null
+                                val sumativas = listOfNotNull(proyecto, evaluacion, refuerzo, mejora)
+                                val evSumativa = if (sumativas.isNotEmpty()) sumativas.average() * 0.3 else null
+                                val evTrimestral = if (evFormativa != null && evSumativa != null) evFormativa + evSumativa else null
+                                val promedio = evTrimestral
+                                val cualitativoA: Double? = null
+                                val cualitativoB: Double? = null
+
+                                val notas = actividades +
+                                        listOf(proyecto, evaluacion, refuerzo, mejora) +
+                                        listOf(evTrimestral, evFormativa, evSumativa, promedio, cualitativoA, cualitativoB)
+
+                                TablaConfig.EstudianteCalificacion(
+                                    idUnico = r.id,     // ✅ idUnico (col1)
+                                    numero  = r.nro,
+                                    nombre  = r.nom,
+                                    notas   = notas.toMutableList()
+                                )
+                            }
+
+                            onSuccess(lista)
+                        }
+                        .addOnFailureListener { e ->
+                            onError(e.localizedMessage ?: "Error leyendo calificaciones")
+                        }
                 }
-                .sortedBy { it.nombre.lowercase() }
-                .mapIndexed { idx, est -> est.copy(numero = idx + 1) }
-
-            onSuccess(estudiantes)
+                .addOnFailureListener { e ->
+                    onError(e.localizedMessage ?: "Error leyendo _config")
+                }
         }
         .addOnFailureListener { e ->
-            onError(e.localizedMessage ?: "Error cargando calificaciones")
+            onError(e.localizedMessage ?: "Error leyendo nómina")
         }
 }

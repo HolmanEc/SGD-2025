@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -53,11 +54,7 @@ import com.holman.sgd.ui.theme.*
 import com.google.firebase.firestore.DocumentReference
 import com.holman.sgd.resources.LoadingDotsOverlay
 import com.holman.sgd.resources.VistaPreviaTablaExcel
-
-// SECCION DE CREAR NOMINA
-// Composable principal que muestra el formulario para crear una nómina.
-
-
+import java.util.UUID
 @Composable
 fun CrearNomina(
     onBack: () -> Unit,
@@ -190,12 +187,15 @@ fun CrearNomina(
                         }
                     }
                 } else {
-                    // ---- Placeholder que ocupa TODO el alto ----
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
                             .border(1.dp, BordeGris, RoundedCornerShape(8.dp))
                             .padding(16.dp)
+                            .clickable(enabled = !isBusy) {
+                                archivoLauncher.launch("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                            },
+                        contentAlignment = Alignment.Center
                     ) {
                         VistaPreviaTablaExcel(
                             modifier = Modifier.fillMaxSize()
@@ -297,8 +297,163 @@ fun CrearNomina(
     }
 }
 
+fun guardarNominaEnFirestore(
+    institucion: String,
+    docente: String,
+    curso: String,
+    paralelo: String,
+    asignatura: String,
+    especialidad: String,
+    periodo: String,
+    datos: List<List<String>>,
+    onSuccess: () -> Unit,
+    onDuplicate: () -> Unit,
+    onError: (String) -> Unit
+) {
+    val db = FirebaseFirestore.getInstance()
 
-// Composable que muestra un campo desplegable (dropdown) con datos cargados desde Firestore.
+    val rutaNominas = db.collection("gestionAcademica")
+        .document("gestionNominas")
+        .collection("nominasEstudiantes")
+
+    if (datos.isEmpty()) {
+        onError("No hay datos para guardar")
+        return
+    }
+    val filasExcel = if (datos.size > 1) datos.drop(1) else emptyList()
+
+    // 1) Verificar duplicados
+    rutaNominas
+        .whereEqualTo("institucion", institucion)
+        .whereEqualTo("docente", docente)
+        .whereEqualTo("curso", curso)
+        .whereEqualTo("paralelo", paralelo)
+        .whereEqualTo("asignatura", asignatura)
+        .whereEqualTo("especialidad", especialidad)
+        .whereEqualTo("periodo", periodo)
+        .get()
+        .addOnSuccessListener { snap ->
+            if (!snap.isEmpty) {
+                onDuplicate(); return@addOnSuccessListener
+            }
+
+            // 2) TABLA con NUEVO ORDEN:
+            //    col1 = ID (aleatorio), col2 = Nro, col3 = Cédula, col4 = Estudiante
+            val encabezado = mapOf(
+                "col1" to "ID",
+                "col2" to "Nro",
+                "col3" to "Cédula",
+                "col4" to "Estudiante"
+            )
+            val filasTabla = mutableListOf<Map<String, Any>>()
+            filasTabla += encabezado
+
+            filasExcel.forEachIndexed { index, fila ->
+                val nro    = (fila.getOrNull(0) ?: (index + 1).toString()).toString().trim()
+                val cedula = (fila.getOrNull(1) ?: "").toString().trim()
+                val nombre = (fila.getOrNull(2) ?: "").toString().trim()
+
+                val idUnico = idUnicoEstudiante()  // ← YA NO depende de cédula/Nombre
+
+                filasTabla += mapOf(
+                    "col1" to idUnico,
+                    "col2" to nro,
+                    "col3" to cedula,
+                    "col4" to nombre
+                )
+            }
+
+            // 3) Documento de nómina (guardamos tabla con IDs aleatorios)
+            val nomina = hashMapOf(
+                "institucion" to institucion,
+                "docente" to docente,
+                "curso" to curso,
+                "paralelo" to paralelo,
+                "asignatura" to asignatura,
+                "especialidad" to especialidad,
+                "periodo" to periodo,
+                "tabla" to filasTabla,
+                "timestamp" to System.currentTimeMillis()
+            )
+
+            // 4) Guardar → colocar idNomina → inicializar calificaciones usando col1 (ID)
+            rutaNominas
+                .add(nomina)
+                .addOnSuccessListener { docRef ->
+                    docRef.update("idNomina", docRef.id)
+                        .addOnFailureListener { /* no bloqueante */ }
+
+                    val insumosCount = com.holman.sgd.resources.calificaciones.TablaConfig.INSUMOS_COUNT
+                    inicializarCalificacionesParaNomina(
+                        nominaDocRef = docRef,
+                        datos = datos,              // se mantiene la firma, pero adentro leeremos la TABLA del doc
+                        insumosCount = insumosCount
+                    ) { ok ->
+                        if (ok) onSuccess()
+                        else onError("Nómina creada, pero falló la inicialización de calificaciones.")
+                    }
+                }
+                .addOnFailureListener { e ->
+                    onError(e.localizedMessage ?: "Error desconocido al guardar nómina")
+                }
+        }
+        .addOnFailureListener { e ->
+            onError(e.localizedMessage ?: "Error al verificar duplicados")
+        }
+}
+
+private fun inicializarCalificacionesParaNomina(
+    nominaDocRef: DocumentReference,
+    datos: List<List<String>>,      // <- se conserva por compatibilidad, pero ya NO lo usamos para el ID
+    insumosCount: Int,
+    onDone: (Boolean) -> Unit
+) {
+    // Leemos la tabla ya guardada, que tiene col1..col4
+    nominaDocRef.get()
+        .addOnSuccessListener { doc ->
+            val tabla = doc.get("tabla") as? List<Map<String, Any?>> ?: emptyList()
+            if (tabla.size <= 1) { onDone(false); return@addOnSuccessListener }
+            val cuerpo = tabla.drop(1)
+
+            val batch = nominaDocRef.firestore.batch()
+
+            cuerpo.forEachIndexed { index, fila ->
+                val id = (fila["col1"] as? String)?.trim().orEmpty()
+                val nro = (fila["col2"] as? String)?.trim().orEmpty()
+                val ced = (fila["col3"] as? String)?.trim().orEmpty()
+                val nom = (fila["col4"] as? String)?.trim().orEmpty()
+
+                if (id.isBlank()) return@forEachIndexed  // debería no pasar porque ya guardamos IDs
+
+                val docRef = nominaDocRef.collection("calificaciones").document(id)
+                val data = mapOf(
+                    "numero" to (nro.toIntOrNull() ?: (index + 1)),
+                    "cedula" to ced,
+                    "nombre" to nom,
+                    "actividades" to List(insumosCount) { null },
+                    "proyecto" to null,
+                    "evaluacion" to null,
+                    "refuerzo" to null,
+                    "mejora" to null,
+                    "updatedAt" to System.currentTimeMillis()
+                )
+                batch.set(docRef, data)
+            }
+
+            val cfgRef = nominaDocRef.collection("calificaciones").document("_config")
+            batch.set(cfgRef, mapOf("insumosCount" to insumosCount, "weights" to mapOf("formativa" to 0.7, "sumativa" to 0.3)))
+
+            batch.commit()
+                .addOnSuccessListener { onDone(true) }
+                .addOnFailureListener { onDone(false) }
+        }
+        .addOnFailureListener { onDone(false) }
+}
+
+private inline fun String?.ifNullOrBlank(defaultValue: () -> String): String {
+    return if (this == null || this.isBlank()) defaultValue() else this
+}
+//////////////////////////////////////////////////////////////////////////////////////////////
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SelectorFirebase(
@@ -378,151 +533,6 @@ fun cargarListadoFirestore(
         .addOnFailureListener { onSuccess(emptyList()) }
 }
 
-
-// Funcion que convierte los datos del Excel en mapas y guarda toda la nómina como un documento en Firestore
-// ====== REEMPLAZA ESTA FUNCIÓN COMPLETA ======
-fun guardarNominaEnFirestore(
-    institucion: String,
-    docente: String,
-    curso: String,
-    paralelo: String,
-    asignatura: String,
-    especialidad: String,
-    periodo: String,
-    datos: List<List<String>>,
-    onSuccess: () -> Unit,
-    onDuplicate: () -> Unit,
-    onError: (String) -> Unit
-) {
-    val db = FirebaseFirestore.getInstance()
-
-    val rutaNominas = db.collection("gestionAcademica")
-        .document("gestionNominas")
-        .collection("nominasEstudiantes")
-
-    // 1) Verificar duplicados
-    rutaNominas
-        .whereEqualTo("institucion", institucion)
-        .whereEqualTo("docente", docente)
-        .whereEqualTo("curso", curso)
-        .whereEqualTo("paralelo", paralelo)
-        .whereEqualTo("asignatura", asignatura)
-        .whereEqualTo("especialidad", especialidad)
-        .whereEqualTo("periodo", periodo)
-        .get()
-        .addOnSuccessListener { snap ->
-            if (!snap.isEmpty) {
-                onDuplicate()
-                return@addOnSuccessListener
-            }
-
-            // 2) Preparar documento de nómina
-            val filas = datos.map { fila ->
-                fila.mapIndexed { index, value -> "col${index + 1}" to value }.toMap()
-            }
-
-            val nomina = hashMapOf(
-                "institucion" to institucion,
-                "docente" to docente,
-                "curso" to curso,
-                "paralelo" to paralelo,
-                "asignatura" to asignatura,
-                "especialidad" to especialidad,
-                "periodo" to periodo,
-                "tabla" to filas,
-                "timestamp" to System.currentTimeMillis()
-            )
-
-            // 3) Guardar y luego inicializar subcolección "calificaciones"
-            rutaNominas
-                .add(nomina)
-                .addOnSuccessListener { docRef ->
-                    // Usa el mismo INSUMOS_COUNT que define la tabla (const en com.holman.sgd.resources)
-                    val insumosCount = com.holman.sgd.resources.INSUMOS_COUNT
-                    inicializarCalificacionesParaNomina(
-                        nominaDocRef = docRef,
-                        datos = datos,
-                        insumosCount = insumosCount
-                    ) { ok ->
-                        if (ok) onSuccess()
-                        else onError("Nómina creada, pero falló la inicialización de calificaciones.")
-                    }
-                }
-                .addOnFailureListener { e ->
-                    onError(e.localizedMessage ?: "Error desconocido al guardar nómina")
-                }
-        }
-        .addOnFailureListener { e ->
-            onError(e.localizedMessage ?: "Error al verificar duplicados")
-        }
-}
-
-
-
-
-
-// ID único igual que en asistencias (cédula primero; si no hay, hash del nombre)
-private fun generarIdUnicoDesde(cedula: String, nombre: String): String {
-    return if (cedula.isNotBlank()) {
-        "cedula_${cedula.trim()}"
-    } else {
-        "nombre_${nombre.trim().lowercase().hashCode()}"
-    }
-}
-
-// Crea docs de calificaciones por estudiante: actividades (N), 4 sumativas y metadata.
-// Guarda también un _config sencillo con el insumosCount.
-private fun inicializarCalificacionesParaNomina(
-    nominaDocRef: DocumentReference,
-    datos: List<List<String>>,
-    insumosCount: Int,
-    onDone: (Boolean) -> Unit
-) {
-    try {
-        val batch = nominaDocRef.firestore.batch()
-
-        val filasDatos = datos.drop(1) // salta encabezados
-        filasDatos.forEachIndexed { index, fila ->
-            val cedula = fila.getOrNull(1)?.trim().orEmpty()  // col2
-            val nombre = fila.getOrNull(2)?.trim().ifNullOrBlank { "Alumno ${index + 1}" }
-            val idUnico = generarIdUnicoDesde(cedula, nombre)
-
-            val docRef = nominaDocRef.collection("calificaciones").document(idUnico)
-            val data = mapOf(
-                "numero" to (index + 1),
-                "cedula" to cedula,
-                "nombre" to nombre,
-                "actividades" to List(insumosCount) { null },
-                "proyecto" to null,
-                "evaluacion" to null,
-                "refuerzo" to null,
-                "mejora" to null,
-                "updatedAt" to System.currentTimeMillis()
-            )
-            batch.set(docRef, data)
-        }
-
-        // Config opcional para la vista
-        val cfgRef = nominaDocRef.collection("calificaciones").document("_config")
-        batch.set(cfgRef, mapOf("insumosCount" to insumosCount, "weights" to mapOf("formativa" to 0.7, "sumativa" to 0.3)))
-
-        batch.commit()
-            .addOnSuccessListener { onDone(true) }
-            .addOnFailureListener { onDone(false) }
-    } catch (_: Exception) {
-        onDone(false)
-    }
-}
-
-private inline fun String?.ifNullOrBlank(defaultValue: () -> String): String {
-    return if (this == null || this.isBlank()) defaultValue() else this
-}
-
-
-
-/////////////////////////////
-
-// Function… lee un archivo Excel (.xlsx) desde el dispositivo y devuelve los datos como una lista de listas de Strings
 fun procesarArchivoExcel(context: Context, uri: Uri): List<List<String>> {
     val datos = mutableListOf<List<String>>()
     val formatter = DataFormatter()  // ← Agrega esto al inicio
@@ -558,4 +568,7 @@ fun procesarArchivoExcel(context: Context, uri: Uri): List<List<String>> {
     return datos
 }
 
-
+//////////////////////////////////////////////////////////////////////////////////////////////
+private fun idUnicoEstudiante(): String {
+    return "std_" + UUID.randomUUID().toString().replace("-", "").take(16)
+}
