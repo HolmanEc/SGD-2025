@@ -77,7 +77,6 @@ fun generarIdUnicoEstudiante(cedula: String, nombre: String): String {
     }
 }
 
-//////////////
 @Composable
 fun Asistencias(navController: NavHostController) {
     var nominas by remember { mutableStateOf<List<NominaResumen>>(emptyList()) }
@@ -87,6 +86,10 @@ fun Asistencias(navController: NavHostController) {
     var selectedNomina by remember { mutableStateOf<NominaResumen?>(null) }
     var selectedNominaColor by remember { mutableStateOf<Color?>(null) }
 
+    // El hijo registrará aquí su handler de back (guardar si cambió y luego onBack)
+    var detalleOnBackRequest by remember { mutableStateOf<(() -> Unit)?>(null) }
+
+    // Cargar nóminas al iniciar
     LaunchedEffect(Unit) {
         cargarNominasDesdeFirestore(
             onSuccess = { listaNominas ->
@@ -100,6 +103,21 @@ fun Asistencias(navController: NavHostController) {
         )
     }
 
+    // El PADRE captura SIEMPRE el back del sistema
+    androidx.activity.compose.BackHandler(enabled = true) {
+        if (selectedNomina == null) {
+            // Estamos en la lista -> navegar hacia atrás en el navController
+            navController.popBackStack()
+        } else {
+            // Estamos en el detalle -> dejar que el handler del hijo se encargue (autosave + volver)
+            detalleOnBackRequest?.invoke() ?: run {
+                // Fallback: si no se registró handler, simplemente volvemos a la lista
+                selectedNomina = null
+                selectedNominaColor = null
+            }
+        }
+    }
+
     if (selectedNomina != null) {
         ScreenNominaDetalleAsistencia(
             nomina = selectedNomina!!,
@@ -107,10 +125,15 @@ fun Asistencias(navController: NavHostController) {
             onBack = {
                 selectedNomina = null
                 selectedNominaColor = null
+                detalleOnBackRequest = null // limpiar registro
+            },
+            onRegisterBackRequest = { handler ->
+                detalleOnBackRequest = handler
             }
         )
     } else {
-        Box( // 👈 Box raíz para poder superponer el overlay
+        // Pantalla principal: lista de nóminas
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(BackgroundDefault)
@@ -127,26 +150,18 @@ fun Asistencias(navController: NavHostController) {
                     contentAlignment = Alignment.Center
                 ) {
                     when {
-                        // 👇 Antes: CircularProgressIndicator()
-                        isLoading -> {
-                            // Dejamos el espacio, el overlay cubrirá toda la pantalla
-                            Spacer(Modifier.size(1.dp))
-                        }
-                        error != null -> {
-                            Text(
-                                "❌ Error: $error",
-                                color = MaterialTheme.colorScheme.error,
-                                textAlign = TextAlign.Center
-                            )
-                        }
-                        nominas.isEmpty() -> {
-                            Text(
-                                "📋 No hay nóminas guardadas.",
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Medium,
-                                textAlign = TextAlign.Center
-                            )
-                        }
+                        isLoading -> Spacer(Modifier.size(1.dp)) // el overlay cubre
+                        error != null -> Text(
+                            "❌ Error: $error",
+                            color = MaterialTheme.colorScheme.error,
+                            textAlign = TextAlign.Center
+                        )
+                        nominas.isEmpty() -> Text(
+                            "📋 No hay nóminas guardadas.",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Medium,
+                            textAlign = TextAlign.Center
+                        )
                         else -> {
                             Column(
                                 modifier = Modifier.fillMaxSize(),
@@ -183,6 +198,7 @@ fun Asistencias(navController: NavHostController) {
                     }
                 }
 
+                // Volver al home (solo en lista)
                 CustomButton(
                     text = "Volver",
                     borderColor = ButtonDarkGray,
@@ -190,7 +206,6 @@ fun Asistencias(navController: NavHostController) {
                 )
             }
 
-            // 👇 Tu overlay de puntos durante la carga de NÓMINAS
             LoadingDotsOverlay(isLoading = isLoading)
         }
     }
@@ -250,9 +265,12 @@ fun SelectorFecha(fecha: String, onFechaSeleccionada: (String) -> Unit) {
 fun ScreenNominaDetalleAsistencia(
     nomina: NominaResumen,
     headerColor: Color,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onRegisterBackRequest: ((() -> Unit) -> Unit) // NUEVO: el hijo registra su handler en el padre
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+
     val alumnos = remember { mutableStateListOf<EstudianteAsistencia>() }
     var isLoading by remember { mutableStateOf(true) }
     var fecha by remember { mutableStateOf(getHoy()) }
@@ -261,7 +279,43 @@ fun ScreenNominaDetalleAsistencia(
     // Estado unificado para overlay y visibilidad del FAB
     val isBusy by remember { derivedStateOf { isLoading || isSaving } }
 
-    // ✅ Cargar alumnos usando col1 como ID (y fallback legacy si no existe col1)
+    // Baseline (por fecha): snapshot inmutable de asistencia actual (idUnico -> presente)
+    var baseline by remember { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
+
+    fun snapshotActual(): Map<String, Boolean> =
+        alumnos.associate { it.idUnico to it.presente }
+
+    fun hayCambios(): Boolean {
+        val now = snapshotActual()
+        if (baseline.size != now.size) return true
+        return now.any { (k, v) -> baseline[k] != v }
+    }
+
+    fun saveIfDirty(showToast: Boolean, onDone: () -> Unit = {}) {
+        if (!hayCambios()) {
+            if (showToast) mensajealert(context, "ℹ️ No hay cambios para guardar.")
+            onDone(); return
+        }
+        isSaving = true
+        guardarAsistenciaFirestore(
+            nominaId = nomina.id,
+            fecha = fecha,
+            alumnos = alumnos,
+            onSuccess = {
+                baseline = snapshotActual() // re-sellar baseline con lo persistido
+                isSaving = false
+                if (showToast) mensajealert(context, "✅ Asistencia guardada.")
+                onDone()
+            },
+            onError = { msg ->
+                isSaving = false
+                if (showToast) mensajealert(context, "❌ Error: $msg")
+                onDone()
+            }
+        )
+    }
+
+    // Cargar alumnos + asistencia inicial
     LaunchedEffect(nomina.id) {
         isLoading = true
         cargarAlumnosAsistenciaPorNomina(
@@ -270,18 +324,20 @@ fun ScreenNominaDetalleAsistencia(
                 alumnos.clear()
                 alumnos.addAll(lista)
 
-                // Cargar asistencia del día seleccionado y aplicarla
                 cargarAsistenciaExistente(
                     nominaId = nomina.id,
                     fecha = fecha,
                     onSuccess = { asistenciaMap ->
                         aplicarAsistenciaCargada(alumnos, asistenciaMap)
                         limpiarAsistenciasHuerfanas(nomina.id, fecha, alumnos)
+                        baseline = snapshotActual() // sellar baseline para esta fecha
+                        isLoading = false
                     },
-                    onError = {}
+                    onError = {
+                        baseline = snapshotActual()
+                        isLoading = false
+                    }
                 )
-
-                isLoading = false
             },
             onError = { msg ->
                 isLoading = false
@@ -290,7 +346,7 @@ fun ScreenNominaDetalleAsistencia(
         )
     }
 
-    // Re-cargar y aplicar asistencia al cambiar la fecha
+    // Re-cargar/aplicar asistencia al cambiar la fecha y re-sellar baseline
     LaunchedEffect(fecha) {
         if (alumnos.isNotEmpty()) {
             cargarAsistenciaExistente(
@@ -299,10 +355,43 @@ fun ScreenNominaDetalleAsistencia(
                 onSuccess = { asistenciaMap ->
                     aplicarAsistenciaCargada(alumnos, asistenciaMap)
                     limpiarAsistenciasHuerfanas(nomina.id, fecha, alumnos)
+                    baseline = snapshotActual()
                 },
-                onError = {}
+                onError = {
+                    baseline = snapshotActual()
+                }
             )
         }
+    }
+
+    // REGISTRAR en el PADRE el handler para el Back del sistema (igual que Calificaciones)
+    LaunchedEffect(nomina.id, alumnos, baseline, isBusy, fecha) {
+        onRegisterBackRequest {
+            if (!isBusy && hayCambios()) {
+                saveIfDirty(showToast = false) { onBack() }
+            } else {
+                onBack()
+            }
+        }
+    }
+
+    // Best-effort autosave cuando la pantalla va a background/cierre
+    DisposableEffect(lifecycleOwner, alumnos, baseline, fecha) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
+                if (hayCambios()) {
+                    guardarAsistenciaFirestore(
+                        nominaId = nomina.id,
+                        fecha = fecha,
+                        alumnos = alumnos,
+                        onSuccess = { baseline = snapshotActual() },
+                        onError = { /* silencioso */ }
+                    )
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     Scaffold(
@@ -310,22 +399,7 @@ fun ScreenNominaDetalleAsistencia(
         floatingActionButton = {
             FloatingSaveButton(
                 visible = !isBusy,
-                onClick = {
-                    isSaving = true
-                    guardarAsistenciaFirestore(
-                        nominaId = nomina.id,
-                        fecha = fecha,
-                        alumnos = alumnos,
-                        onSuccess = {
-                            mensajealert(context, "✅ Asistencia guardada.")
-                            isSaving = false
-                        },
-                        onError = { msg ->
-                            mensajealert(context, "❌ Error: $msg")
-                            isSaving = false
-                        }
-                    )
-                },
+                onClick = { saveIfDirty(showToast = true) },
                 modifier = Modifier.offset(x = (-4).dp, y = 2.dp),
             )
         }
@@ -343,7 +417,13 @@ fun ScreenNominaDetalleAsistencia(
                     CustomButton(
                         text = "Volver a nóminas",
                         borderColor = ButtonDarkGray,
-                        onClick = onBack
+                        onClick = {
+                            if (!isBusy && hayCambios()) {
+                                saveIfDirty(showToast = false) { onBack() }
+                            } else {
+                                onBack()
+                            }
+                        }
                     )
                 }
 

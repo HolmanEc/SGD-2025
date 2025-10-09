@@ -31,6 +31,9 @@ fun Calificaciones(navController: NavHostController) {
     var selectedNomina by remember { mutableStateOf<NominaResumen?>(null) }
     var selectedNominaColor by remember { mutableStateOf<Color?>(null) }
 
+    // 🔹 El hijo nos registrará aquí su "onBackRequest" (guardar si cambió y luego volver)
+    var detalleOnBackRequest by remember { mutableStateOf<(() -> Unit)?>(null) }
+
     LaunchedEffect(Unit) {
         cargarNominasDesdeFirestore(
             onSuccess = { lista ->
@@ -44,17 +47,43 @@ fun Calificaciones(navController: NavHostController) {
         )
     }
 
+    // 🔙 El PADRE captura el Back del sistema:
+    // - Si estamos en lista (selectedNomina == null) -> popBackStack()
+    // - Si estamos en detalle -> llama al handler que registró el hijo (auto-guardará) o, si no existe, vuelve a la lista.
+    androidx.activity.compose.BackHandler(enabled = true) {
+        if (selectedNomina == null) {
+            navController.popBackStack()
+        } else {
+            // Estamos en detalle
+            val handled = detalleOnBackRequest
+            if (handled != null) {
+                handled.invoke() // el hijo guardará si hay cambios y luego llamará onBack()
+            } else {
+                // Fallback seguro
+                selectedNomina = null
+                selectedNominaColor = null
+            }
+        }
+    }
+
     if (selectedNomina != null) {
         ScreenNominaDetalleCalificaciones(
             nomina = selectedNomina!!,
             headerColor = selectedNominaColor ?: EncabezadoEnDetalleNominas,
+            // 👇 El hijo llama esto CUANDO YA guardó (si había cambios) y está listo para salir:
             onBack = {
                 selectedNomina = null
                 selectedNominaColor = null
+                // Limpio el registro por seguridad
+                detalleOnBackRequest = null
+            },
+            // 👇 El hijo nos REGISTRA su "onBackRequest": guardar-si-dirty y luego onBack()
+            onRegisterBackRequest = { handler ->
+                detalleOnBackRequest = handler
             }
         )
     } else {
-        Box( // 👈 Para superponer el overlay
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(BackgroundDefault)
@@ -72,9 +101,7 @@ fun Calificaciones(navController: NavHostController) {
                 ) {
                     when {
                         isLoading -> {
-                            // Antes: CircularProgressIndicator()
-                            // Ahora dejamos el espacio, el overlay cubre la pantalla
-                            Spacer(Modifier.size(1.dp))
+                            Spacer(Modifier.size(1.dp)) // overlay cubre
                         }
                         error != null -> Text(
                             "❌ Error: $error",
@@ -128,36 +155,82 @@ fun Calificaciones(navController: NavHostController) {
                 )
             }
 
-            // 👇 Tu overlay de puntos durante carga de nóminas
             LoadingDotsOverlay(isLoading = isLoading)
         }
     }
 }
 
+
+
+////
 @OptIn(ExperimentalMaterial3Api::class)
 @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
 @Composable
 fun ScreenNominaDetalleCalificaciones(
     nomina: NominaResumen,
     headerColor: Color,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onRegisterBackRequest: ((() -> Unit) -> Unit) // 👈 NUEVO: el hijo registra su handler en el padre
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
 
     var isLoading by remember { mutableStateOf(true) }
     var estudiantes by remember { mutableStateOf<List<TablaConfig.EstudianteCalificacion>>(emptyList()) }
-    var isSaving by remember { mutableStateOf(false) } // controla overlay durante guardado
+    var isSaving by remember { mutableStateOf(false) } // overlay durante guardado
     val isBusy by remember { derivedStateOf { isLoading || isSaving } }
+
+    // Baseline: snapshot inmutable de notas al cargar/recargar
+    var baseline by remember { mutableStateOf<Map<String, List<Double?>>>(emptyMap()) }
+
+    fun eqNota(a: Double?, b: Double?, eps: Double = 1e-6) =
+        if (a == null && b == null) true else if (a == null || b == null) false else kotlin.math.abs(a - b) < eps
+
+    fun notasCambiaron(actual: List<Double?>, anterior: List<Double?>): Boolean {
+        val editableCols = TablaConfig.INSUMOS_COUNT + 4 // INSUMOS + PROYECTO + EVAL + REFUERZO + MEJORA
+        val base = anterior.take(editableCols)
+        val now  = actual.take(editableCols)
+        if (base.size != now.size) return true
+        return base.indices.any { i -> !eqNota(base[i], now[i]) }
+    }
+
+    fun estudiantesModificados(): List<TablaConfig.EstudianteCalificacion> =
+        estudiantes.filter { est ->
+            val before = baseline[est.idUnico]
+            before == null || notasCambiaron(est.notas, before)
+        }
+
+    fun tieneCambiosPendientes(): Boolean = estudiantesModificados().isNotEmpty()
+
+    fun saveIfDirty(showToast: Boolean, onDone: () -> Unit = {}) {
+        val cambios = estudiantesModificados()
+        if (cambios.isEmpty()) {
+            if (showToast) mensajealert(context, "ℹ️ No hay cambios para guardar.")
+            onDone(); return
+        }
+        isSaving = true
+        guardarCalificacionesEnFirestore(
+            nominaId = nomina.id,
+            estudiantes = cambios
+        ) {
+            // Re-sellar baseline con estado actual persistido
+            baseline = estudiantes.associate { e -> e.idUnico to e.notas.map { v -> v } }
+            isSaving = false
+            if (showToast) mensajealert(context, "✅  Calificaciones guardadas.")
+            onDone()
+        }
+    }
 
     fun refresh(fromSave: Boolean) {
         if (!fromSave) isLoading = true
         cargarCalificacionesDesdeFirestore(
             nominaId = nomina.id,
-            onSuccess = {
-                estudiantes = it
+            onSuccess = { lista ->
+                estudiantes = lista
+                baseline = lista.associate { e -> e.idUnico to e.notas.map { v -> v } }
                 if (fromSave) {
                     isSaving = false
-                    mensajealert(context, "✅ Calificaciones guardadas.")
+                    mensajealert(context, "✅  Calificaciones guardadas.")
                 } else {
                     isLoading = false
                 }
@@ -166,10 +239,10 @@ fun ScreenNominaDetalleCalificaciones(
                 estudiantes = emptyList()
                 if (fromSave) {
                     isSaving = false
-                    mensajealert(context, "❌ Error al recargar: $err")
+                    mensajealert(context, "❌  Error al recargar: $err")
                 } else {
                     isLoading = false
-                    mensajealert(context, "❌ Error al cargar: $err")
+                    mensajealert(context, "❌  Error al cargar: $err")
                 }
             }
         )
@@ -177,21 +250,40 @@ fun ScreenNominaDetalleCalificaciones(
 
     LaunchedEffect(nomina.id) { refresh(fromSave = false) }
 
+    // 👇 REGISTRA en el PADRE el handler que debe ejecutarse cuando el usuario presione Back del sistema:
+    // Este handler guarda si hay cambios y luego invoca onBack() (que el padre implementa para volver a la lista).
+    LaunchedEffect(nomina.id, estudiantes, baseline, isBusy) {
+        onRegisterBackRequest {
+            if (!isBusy && tieneCambiosPendientes()) {
+                saveIfDirty(showToast = false) { onBack() }
+            } else {
+                onBack()
+            }
+        }
+    }
+
+    // Best-effort autosave en background/cierre (ON_STOP)
+    DisposableEffect(lifecycleOwner, estudiantes, baseline) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
+                val cambios = estudiantesModificados()
+                if (cambios.isNotEmpty()) {
+                    guardarCalificacionesEnFirestore(nominaId = nomina.id, estudiantes = cambios) {
+                        // silencioso
+                    }
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     Scaffold(
         containerColor = BackgroundDefault,
         floatingActionButton = {
             FloatingSaveButton(
                 visible = !isBusy,
-                onClick = {
-                    isSaving = true
-                    guardarCalificacionesEnFirestore(
-                        nominaId = nomina.id,
-                        estudiantes = estudiantes
-                    ) {
-                        // recarga usando el mismo overlay
-                        refresh(fromSave = true)
-                    }
-                },
+                onClick = { saveIfDirty(showToast = true) },
                 modifier = Modifier.offset(x = (-8).dp, y = 8.dp)
             )
         }
@@ -206,7 +298,13 @@ fun ScreenNominaDetalleCalificaciones(
                 CustomButton(
                     text = "Volver a nóminas",
                     borderColor = ButtonDarkGray,
-                    onClick = onBack
+                    onClick = {
+                        if (!isBusy && tieneCambiosPendientes()) {
+                            saveIfDirty(showToast = false) { onBack() }
+                        } else {
+                            onBack()
+                        }
+                    }
                 )
                 Spacer(Modifier.height(8.dp))
 
@@ -225,11 +323,9 @@ fun ScreenNominaDetalleCalificaciones(
                     Spacer(Modifier.height(16.dp))
 
                     when {
-                        isLoading -> {
-                            Spacer(Modifier.size(1.dp))
-                        }
+                        isLoading -> Spacer(Modifier.size(1.dp))
                         else -> {
-                            val colores = TablaColors.fromNomina(headerColor) // usa el color de la nómina
+                            val colores = TablaColors.fromNomina(headerColor)
                             TablaCalificaciones(
                                 estudiantes = estudiantes,
                                 nominaId = nomina.id,
@@ -248,6 +344,7 @@ fun ScreenNominaDetalleCalificaciones(
     }
 }
 
+////
 fun guardarCalificacionesEnFirestore(
     nominaId: String,
     estudiantes: List<TablaConfig.EstudianteCalificacion>,

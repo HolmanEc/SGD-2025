@@ -26,8 +26,6 @@ import com.holman.sgd.resources.CustomButton
 import com.holman.sgd.resources.screens.isTablet
 import kotlin.String
 
-
-// Enum para controlar qué formulario se muestra
 enum class NominaFormulario {
     MENU, CREAR, REVISAR
 }
@@ -58,11 +56,6 @@ fun Nominas(navController: NavHostController) {
         NominaFormulario.REVISAR -> revisarNomina { formularioActual = NominaFormulario.MENU }
     }
 }
-
-
-
-
-
 
 @SuppressLint("UnusedBoxWithConstraintsScope")
 @Composable
@@ -167,8 +160,6 @@ fun MenuNominas(
         }
     }
 }
-
-/////////////
 
 @Composable
 fun MenuCardNominas(

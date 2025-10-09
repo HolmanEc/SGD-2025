@@ -19,9 +19,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -361,17 +365,27 @@ object TablaUI {
         editingValue: TextFieldValue,
         onEditingValueChange: (TextFieldValue) -> Unit
     ) {
+        val keyboard = LocalSoftwareKeyboardController.current
+
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
-                .wrapContentHeight()            // ⬅️ evita forzar todo el alto
+                .wrapContentHeight()
         ){
             itemsIndexed(estudiantes) { index, est ->
                 val totalRows = estudiantes.size
-                val derivados = remember(est.notas) { TablaCalculos.calcularDerivados(est.notas, TablaConfig.INSUMOS_COUNT) }
+
+                // 👉 ¿Esta fila es la que se está editando?
+                val editingThisRow = editingCell?.first == est.idUnico
+                // 👉 Suscríbete a los cambios del texto SOLO en la fila que edita
+                //    Esto fuerza recomposición de TODA la fila en cada tecla.
+                val _recomposeTrigger = if (editingThisRow) editingValue.text else null
+
+                // ✅ Recalcula SIEMPRE a partir de las notas actuales
+                val derivados = TablaCalculos.calcularDerivados(est.notas, TablaConfig.INSUMOS_COUNT)
 
                 Row {
-                    // ID (col 1) — color aclarado
+                    // ID (col 1)
                     Box(
                         modifier = Modifier
                             .width(config.colWidthId.dp)
@@ -383,7 +397,7 @@ object TablaUI {
                         Text(est.numero.toString(), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
 
-                    // Estudiante (col 2) — color aclarado
+                    // Estudiante (col 2)
                     Box(
                         modifier = Modifier
                             .width(config.colWidthNombre.dp)
@@ -408,6 +422,7 @@ object TablaUI {
                             val colIndex = firstEditableIndex + j
                             val isEditing = (editingCell == est.idUnico to colIndex)
                             val fondo = if (index % 2 == 0) colores.notasPar else colores.notasImpar
+                            val focusRequester = remember { FocusRequester() }
 
                             Box(
                                 modifier = Modifier
@@ -418,15 +433,25 @@ object TablaUI {
                                 contentAlignment = Alignment.Center
                             ) {
                                 if (isEditing) {
+                                    // Foco y teclado al entrar en edición
+                                    LaunchedEffect(est.idUnico, colIndex, isEditing) {
+                                        if (isEditing) {
+                                            focusRequester.requestFocus()
+                                            keyboard?.show()
+                                        }
+                                    }
+
                                     BasicTextField(
-                                        value = editingValue.text,
-                                        onValueChange = { newText ->
-                                            onEditingValueChange(TextFieldValue(newText))
-                                            est.notas[j] = TablaCalculos.safeParseNota(newText)
+                                        value = editingValue,
+                                        onValueChange = { newValue ->
+                                            onEditingValueChange(newValue)
+                                            // Actualiza el modelo (0..10, soporta coma)
+                                            est.notas[j] = TablaCalculos.safeParseNota(newValue.text)
                                         },
                                         modifier = Modifier
                                             .width(config.colWidthNotas.dp)
-                                            .wrapContentHeight(align = Alignment.CenterVertically),
+                                            .wrapContentHeight(align = Alignment.CenterVertically)
+                                            .focusRequester(focusRequester),
                                         textStyle = LocalTextStyle.current.copy(
                                             fontSize = 12.sp,
                                             textAlign = TextAlign.Center
@@ -443,7 +468,13 @@ object TablaUI {
                                                 if (nextIndex < estudiantes.size) {
                                                     val siguienteEst = estudiantes[nextIndex]
                                                     onEditingCellChange(siguienteEst.idUnico to colIndex)
-                                                    onEditingValueChange(TextFieldValue(siguienteEst.notas[j]?.let { TablaCalculos.formatNota(it) } ?: ""))
+                                                    val nextTxt = siguienteEst.notas[j]?.let { TablaCalculos.formatNota(it) } ?: ""
+                                                    onEditingValueChange(
+                                                        TextFieldValue(
+                                                            text = nextTxt,
+                                                            selection = TextRange(0, nextTxt.length)
+                                                        )
+                                                    )
                                                 } else onEditingCellChange(null)
                                             },
                                             onDone = { onEditingCellChange(null) }
@@ -457,15 +488,22 @@ object TablaUI {
                                         fontSize = 12.sp,
                                         textAlign = TextAlign.Center,
                                         modifier = Modifier.clickable {
+                                            // Un tap: activar edición + precargar y seleccionar todo
                                             onEditingCellChange(est.idUnico to colIndex)
-                                            onEditingValueChange(TextFieldValue(nota?.let { TablaCalculos.formatNota(it) } ?: ""))
+                                            val txt = nota?.let { TablaCalculos.formatNota(it) } ?: ""
+                                            onEditingValueChange(
+                                                TextFieldValue(
+                                                    text = txt,
+                                                    selection = TextRange(0, txt.length)
+                                                )
+                                            )
                                         }
                                     )
                                 }
                             }
                         }
 
-                        // Finales (readonly: 6)
+                        // Finales (readonly: 6) — ahora sí cambian en tiempo real en esta fila
                         val finales = listOf(
                             derivados.evTrimestral,
                             derivados.evFormativa,
@@ -500,6 +538,7 @@ object TablaUI {
             }
         }
     }
+
 }
 
 /* ---------------------- 6) API pública ---------------------- */
