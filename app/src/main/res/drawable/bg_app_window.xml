@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Fondo gris oscuro -->
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#212121" />
+        </shape>
+    </item>
+
+    <!-- Logo PNG centrado (tamaño fijo) -->
+    <item
+        android:width="110dp"
+        android:height="110dp"
+        android:gravity="center">
+        <bitmap
+            android:src="@drawable/logo_launcher"
+            android:filter="true" />
+    </item>
+
+</layer-list>

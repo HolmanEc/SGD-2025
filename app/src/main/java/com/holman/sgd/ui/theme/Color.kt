@@ -5,10 +5,15 @@ import androidx.compose.ui.graphics.Color
 // ======================
 // Colores para fondos de screens
 // ======================
-val BackgroundDefault = Color(0xFFE5EBF1)
+val BackgroundDefault = Color(0xFFF5F3FF)
 val TextDefaultBlack = Color(0xFF1C1C1C)
 val TextDefaultWhite = Color(0xFFFFFFFF)
 val BackgroundBar = Color(0xFF4A5565)
+
+// ======================
+// Colores para loading
+// ======================
+val colorPuntos = Color(0xFFFFFFFF)
 
 
 
@@ -30,6 +35,8 @@ val Card8 = Color(0xFFB0BEC5)  // Gris azulado medio
 // ======================
 val EncabezadoEnDetalleNominas = Color(0xFF4A5565)
 val BtnFlotanteGuardarEnNomiba = Color(0xFF27702A)
+val BtnFlotanteExportarNotas = Color(0xFF03A9F4)
+
 
 // Colores para botones oscuros
 val ButtonDarkPrimary = Color(0xFF3043B6)

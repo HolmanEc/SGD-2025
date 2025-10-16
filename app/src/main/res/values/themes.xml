@@ -1,5 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- 🎨 Tema BASE totalmente transparente -->
+    <style name="Theme.SGD" parent="android:Theme.Material.Light.NoActionBar">
+        <!-- Fondo transparente absoluto -->
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
 
-    <style name="Theme.SGD" parent="android:Theme.Material.Light.NoActionBar" />
+        <!-- Evita que Android fuerce blanco -->
+        <item name="android:backgroundDimEnabled">false</item>
+        <item name="android:windowDisablePreview">true</item>
+
+        <!-- Edge-to-edge opcional -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+    <!-- 🚀 Tema SOLO para Login con splash XML -->
+    <style name="Theme.SGD.Launcher" parent="Theme.SGD">
+        <item name="android:windowIsTranslucent">false</item>
+        <item name="android:windowBackground">@drawable/bg_app_window</item>
+    </style>
+
 </resources>

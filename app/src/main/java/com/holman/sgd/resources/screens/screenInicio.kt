@@ -14,6 +14,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
@@ -23,6 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.navigation.NavHostController
 import com.holman.sgd.R
 import com.holman.sgd.resources.CustomButton
@@ -171,66 +174,72 @@ fun SalirDialog() {
     val activity = context as? Activity
     var showExitDialog by remember { mutableStateOf(false) }
 
-    BackHandler {
-        showExitDialog = true
-    }
+    BackHandler { showExitDialog = true }
 
     if (showExitDialog) {
-        AlertDialog(
-            onDismissRequest = { showExitDialog = false },
-            title = {
-                Box(
-                    modifier = Modifier.fillMaxWidth(),
-                    contentAlignment = Alignment.Center
+        Dialog(
+            onDismissRequest = { showExitDialog = false }
+        ) {
+            // Contenedor del diálogo (tú controlas color, bordes y sombra)
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = BackgroundDefault,         // color de fondo del diálogo
+                tonalElevation = 0.dp,             // sin elevación tonal
+                shadowElevation = 16.dp,           // << sombra real visible
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)   // margen respecto a los bordes de pantalla
+            ) {
+                Column(
+                    modifier = Modifier
+                        .padding(20.dp)
+                        .wrapContentWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
                         text = "Salir de la aplicación",
                         color = TextDefaultBlack,
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
                     )
-                }
-            },
-            text = {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
+
+                    Spacer(Modifier.height(12.dp))
+
                     Text(
                         text = "¿Seguro que quieres salir de la aplicación?",
                         color = TextDefaultBlack,
-                        textAlign = TextAlign.Center
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
                     )
-                }
-            },
-            confirmButton = {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Box(modifier = Modifier.weight(1f)) {
-                        CustomButton(
-                            text = "Sí, Salir",
-                            borderColor = ButtonDarkError,
-                            onClick = {
-                                showExitDialog = false
-                                activity?.finish()
-                            }
-                        )
+
+                    Spacer(Modifier.height(20.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Box(modifier = Modifier.weight(1f)) {
+                            CustomButton(
+                                text = "Sí, Salir",
+                                borderColor = ButtonDarkError,
+                                onClick = {
+                                    showExitDialog = false
+                                    activity?.finish()
+                                }
+                            )
+                        }
+                        Box(modifier = Modifier.weight(1f)) {
+                            CustomButton(
+                                text = "Cancelar",
+                                borderColor = ButtonDarkGray,
+                                onClick = { showExitDialog = false }
+                            )
+                        }
                     }
-                    Box(modifier = Modifier.weight(1f)) {
-                        CustomButton(
-                            text = "Cancelar",
-                            borderColor = ButtonDarkGray,
-                            onClick = { showExitDialog = false }
-                        )
-                    }
                 }
-            },
-            dismissButton = {},
-            containerColor = BackgroundDefault
-        )
+            }
+        }
     }
 }

@@ -1,7 +1,7 @@
 package com.holman.sgd.resources
 
 import android.annotation.SuppressLint
-import androidx.compose.foundation.background
+import android.content.Context
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -20,10 +20,24 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.holman.sgd.resources.calificaciones.*
 import com.holman.sgd.resources.calificaciones.TablaConfig.INSUMOS_COUNT
 import com.holman.sgd.ui.theme.*
-
+import org.apache.poi.ss.usermodel.FillPatternType
+import org.apache.poi.ss.usermodel.IndexedColors
+import org.apache.poi.xssf.usermodel.XSSFWorkbook
+import android.content.ContentValues
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileOutputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun Calificaciones(navController: NavHostController) {
+    val context = LocalContext.current
+
     var nominas by remember { mutableStateOf<List<NominaResumen>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -33,6 +47,10 @@ fun Calificaciones(navController: NavHostController) {
 
     // 🔹 El hijo nos registrará aquí su "onBackRequest" (guardar si cambió y luego volver)
     var detalleOnBackRequest by remember { mutableStateOf<(() -> Unit)?>(null) }
+
+    // 🔹 Prefetch antes de abrir el detalle
+    var isOpeningDetail by remember { mutableStateOf(false) }
+    var prefetchEstudiantes by remember { mutableStateOf<List<TablaConfig.EstudianteCalificacion>?>(null) }
 
     LaunchedEffect(Unit) {
         cargarNominasDesdeFirestore(
@@ -47,21 +65,15 @@ fun Calificaciones(navController: NavHostController) {
         )
     }
 
-    // 🔙 El PADRE captura el Back del sistema:
-    // - Si estamos en lista (selectedNomina == null) -> popBackStack()
-    // - Si estamos en detalle -> llama al handler que registró el hijo (auto-guardará) o, si no existe, vuelve a la lista.
+    // 🔙 Back del sistema
     androidx.activity.compose.BackHandler(enabled = true) {
         if (selectedNomina == null) {
             navController.popBackStack()
         } else {
-            // Estamos en detalle
-            val handled = detalleOnBackRequest
-            if (handled != null) {
-                handled.invoke() // el hijo guardará si hay cambios y luego llamará onBack()
-            } else {
-                // Fallback seguro
+            detalleOnBackRequest?.invoke() ?: run {
                 selectedNomina = null
                 selectedNominaColor = null
+                prefetchEstudiantes = null
             }
         }
     }
@@ -70,24 +82,23 @@ fun Calificaciones(navController: NavHostController) {
         ScreenNominaDetalleCalificaciones(
             nomina = selectedNomina!!,
             headerColor = selectedNominaColor ?: EncabezadoEnDetalleNominas,
-            // 👇 El hijo llama esto CUANDO YA guardó (si había cambios) y está listo para salir:
+            // El hijo llama esto CUANDO YA guardó (si había cambios) y está listo para salir:
             onBack = {
                 selectedNomina = null
                 selectedNominaColor = null
-                // Limpio el registro por seguridad
                 detalleOnBackRequest = null
+                prefetchEstudiantes = null
             },
-            // 👇 El hijo nos REGISTRA su "onBackRequest": guardar-si-dirty y luego onBack()
-            onRegisterBackRequest = { handler ->
-                detalleOnBackRequest = handler
-            }
+            // El hijo nos REGISTRA su "onBackRequest": guardar-si-dirty y luego onBack()
+            onRegisterBackRequest = { handler -> detalleOnBackRequest = handler },
+            // ✅ datos precargados para entrar “ya listo”
+            initialEstudiantes = prefetchEstudiantes,
+            skipInitialLoad = prefetchEstudiantes != null
         )
     } else {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(BackgroundDefault)
-        ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            FondoScreenDefault()
+
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -100,9 +111,7 @@ fun Calificaciones(navController: NavHostController) {
                     contentAlignment = Alignment.Center
                 ) {
                     when {
-                        isLoading -> {
-                            Spacer(Modifier.size(1.dp)) // overlay cubre
-                        }
+                        isLoading -> Spacer(Modifier.size(1.dp)) // overlay cubre
                         error != null -> Text(
                             "❌ Error: $error",
                             color = MaterialTheme.colorScheme.error
@@ -137,8 +146,21 @@ fun Calificaciones(navController: NavHostController) {
                                             nomina = nomina,
                                             index = index,
                                             onClick = { colorSeleccionado: Color ->
-                                                selectedNomina = nomina
-                                                selectedNominaColor = colorSeleccionado
+                                                // 🔹 PREFETCH: mantenemos la lista visible hasta cargar todo
+                                                isOpeningDetail = true
+                                                cargarCalificacionesDesdeFirestore(
+                                                    nominaId = nomina.id,
+                                                    onSuccess = { lista ->
+                                                        prefetchEstudiantes = lista
+                                                        selectedNomina = nomina
+                                                        selectedNominaColor = colorSeleccionado
+                                                        isOpeningDetail = false
+                                                    },
+                                                    onError = { msg ->
+                                                        isOpeningDetail = false
+                                                        mensajealert(context, "❌ $msg")
+                                                    }
+                                                )
                                             }
                                         )
                                     }
@@ -155,14 +177,14 @@ fun Calificaciones(navController: NavHostController) {
                 )
             }
 
-            LoadingDotsOverlay(isLoading = isLoading)
+            // 🔸 Overlay combinado:
+            // - isLoading: carga inicial de la lista (lo que ya tenías)
+            // - isOpeningDetail: prefetch al abrir detalle
+            LoadingDotsOverlay(isLoading = isLoading || isOpeningDetail)
         }
     }
 }
 
-
-
-////
 @OptIn(ExperimentalMaterial3Api::class)
 @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
 @Composable
@@ -170,7 +192,9 @@ fun ScreenNominaDetalleCalificaciones(
     nomina: NominaResumen,
     headerColor: Color,
     onBack: () -> Unit,
-    onRegisterBackRequest: ((() -> Unit) -> Unit) // 👈 NUEVO: el hijo registra su handler en el padre
+    onRegisterBackRequest: ((() -> Unit) -> Unit),
+    initialEstudiantes: List<TablaConfig.EstudianteCalificacion>? = null,
+    skipInitialLoad: Boolean = false
 ) {
     val context = LocalContext.current
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
@@ -213,7 +237,6 @@ fun ScreenNominaDetalleCalificaciones(
             nominaId = nomina.id,
             estudiantes = cambios
         ) {
-            // Re-sellar baseline con estado actual persistido
             baseline = estudiantes.associate { e -> e.idUnico to e.notas.map { v -> v } }
             isSaving = false
             if (showToast) mensajealert(context, "✅  Calificaciones guardadas.")
@@ -248,10 +271,22 @@ fun ScreenNominaDetalleCalificaciones(
         )
     }
 
-    LaunchedEffect(nomina.id) { refresh(fromSave = false) }
+    // ✅ Si llega data precargada, úsala y evita el loading inicial
+    LaunchedEffect(Unit) {
+        if (initialEstudiantes != null) {
+            estudiantes = initialEstudiantes
+            baseline = initialEstudiantes.associate { e -> e.idUnico to e.notas.map { v -> v } }
+            isLoading = false
+        }
+    }
 
-    // 👇 REGISTRA en el PADRE el handler que debe ejecutarse cuando el usuario presione Back del sistema:
-    // Este handler guarda si hay cambios y luego invoca onBack() (que el padre implementa para volver a la lista).
+    // Carga inicial SOLO si no hubo prefetch
+    LaunchedEffect(nomina.id) {
+        if (skipInitialLoad) return@LaunchedEffect
+        refresh(fromSave = false)
+    }
+
+    // Back del sistema registrado en el padre
     LaunchedEffect(nomina.id, estudiantes, baseline, isBusy) {
         onRegisterBackRequest {
             if (!isBusy && tieneCambiosPendientes()) {
@@ -262,7 +297,7 @@ fun ScreenNominaDetalleCalificaciones(
         }
     }
 
-    // Best-effort autosave en background/cierre (ON_STOP)
+    // Autosave best-effort al ir a background/cierre
     DisposableEffect(lifecycleOwner, estudiantes, baseline) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
@@ -281,11 +316,20 @@ fun ScreenNominaDetalleCalificaciones(
     Scaffold(
         containerColor = BackgroundDefault,
         floatingActionButton = {
-            FloatingSaveButton(
-                visible = !isBusy,
-                onClick = { saveIfDirty(showToast = true) },
+            Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalAlignment = Alignment.End,
                 modifier = Modifier.offset(x = (-8).dp, y = 8.dp)
-            )
+            ) {
+                FloatingExportButton(
+                    visible = !isBusy,
+                    onClick = {}
+                )
+                FloatingSaveButton(
+                    visible = !isBusy,
+                    onClick = { saveIfDirty(showToast = true) }
+                )
+            }
         }
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -344,7 +388,138 @@ fun ScreenNominaDetalleCalificaciones(
     }
 }
 
-////
+fun exportCalificacionesXlsxToDownloads(
+    context: Context,
+    nominaId: String,
+    estudiantes: List<TablaConfig.EstudianteCalificacion>,
+    insumosCount: Int
+) {
+    if (estudiantes.isEmpty()) {
+        mensajealert(context, "ℹ️ No hay datos para exportar.")
+        return
+    }
+
+    try {
+        // ---------- 1) Construir el workbook .xlsx en memoria ----------
+        val wb = XSSFWorkbook()
+        val sheet = wb.createSheet("Calificaciones")
+
+        // Estilo de encabezado
+        val headerStyle = wb.createCellStyle().apply {
+            fillForegroundColor = IndexedColors.GREY_25_PERCENT.index
+            fillPattern = FillPatternType.SOLID_FOREGROUND
+        }
+
+        // Headers
+        val headersGrupo1 = listOf("ID", "ESTUDIANTE")
+        val headersFormativa = (1..insumosCount).map { "ACTIVIDAD $it" } + "FORMATIVA"
+        val headersSumativa = listOf("PROYECTO", "EXAMEN", "REFUERZO", "MEJORA", "EVALUACION")
+        val headersFinales  = listOf("FORMATIVA", "SUMATIVA", "PROMEDIO", "CUALIT. A", "CUALIT. B")
+        val headers = headersGrupo1 + headersFormativa + headersSumativa + headersFinales
+
+        var rowIdx = 0
+        var row = sheet.createRow(rowIdx++)
+        headers.forEachIndexed { i, h ->
+            val cell = row.createCell(i)
+            cell.setCellValue(h)
+            cell.cellStyle = headerStyle
+        }
+
+        // Filas de datos (orden por número/ID)
+        estudiantes.sortedBy { it.numero }.forEach { est ->
+            row = sheet.createRow(rowIdx++)
+            var col = 0
+
+            val notas = est.notas
+
+            // Formativa
+            val actividades = (0 until insumosCount).map { idx -> notas.getOrNull(idx) }
+            val promForm = TablaCalculos.promedioActividades(notas, insumosCount)
+
+            // Sumativa editables
+            val proyecto = notas.getOrNull(insumosCount + 0)
+            val examen   = notas.getOrNull(insumosCount + 1)
+            val refuerzo = notas.getOrNull(insumosCount + 2)
+            val mejora   = notas.getOrNull(insumosCount + 3)
+
+            // Sumativa calculada
+            val evaMejorada = TablaCalculos.evaluacionMejorada(notas, insumosCount)
+
+            // Derivados finales (incluye cualitativos)
+            val der = TablaCalculos.calcularDerivados(notas, insumosCount)
+
+            fun putStr(v: String?) { row.createCell(col++).setCellValue(v ?: "") }
+            fun putNumAsString(n: Double?) { row.createCell(col++).setCellValue(TablaCalculos.formatNota(n)) }
+
+            // Datos personales
+            putStr(est.numero.toString())
+            putStr(est.nombre)
+
+            // Formativa: actividades + promedio formativa
+            actividades.forEach { putNumAsString(it) }
+            putNumAsString(promForm)
+
+            // Sumativa: 4 editables + evaluación mejorada
+            putNumAsString(proyecto)
+            putNumAsString(examen)
+            putNumAsString(refuerzo)
+            putNumAsString(mejora)
+            putNumAsString(evaMejorada)
+
+            // Finales: form 70, sum 30, promedio, cualitativos
+            putNumAsString(der.evFormativa)
+            putNumAsString(der.evSumativa)
+            putNumAsString(der.promedio)
+            putStr(der.cualitativoA)
+            putStr(der.cualitativoB)
+        }
+
+        // Auto-size columnas
+        headers.indices.forEach { i -> sheet.autoSizeColumn(i) }
+
+        // Serializar a bytes
+        val bytes = wb.use { workbook ->
+            val bos = ByteArrayOutputStream()
+            workbook.write(bos)
+            bos.toByteArray()
+        }
+
+        // ---------- 2) Guardar en "Descargas" y confirmar ----------
+        val sdf = SimpleDateFormat("yyyyMMdd_HHmm", Locale.getDefault())
+        val stamp = sdf.format(Date())
+        val fileName = "Calificaciones_${nominaId}_$stamp.xlsx"
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            // Android 10+ : MediaStore (no requiere permisos especiales)
+            val values = ContentValues().apply {
+                put(MediaStore.Downloads.DISPLAY_NAME, fileName)
+                put(MediaStore.Downloads.MIME_TYPE, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                put(MediaStore.Downloads.IS_PENDING, 1)
+            }
+            val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                ?: throw IllegalStateException("No se pudo crear el archivo en Descargas.")
+
+            context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+
+            values.clear()
+            values.put(MediaStore.Downloads.IS_PENDING, 0)
+            context.contentResolver.update(uri, values, null, null)
+
+            mensajealert(context, "📊 Excel guardado en Descargas: $fileName")
+        } else {
+            // Android 5–9: escribir en carpeta pública Descargas (puede requerir WRITE_EXTERNAL_STORAGE)
+            @Suppress("DEPRECATION")
+            val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            if (!dir.exists()) dir.mkdirs()
+            val outFile = File(dir, fileName)
+            FileOutputStream(outFile).use { it.write(bytes) }
+            mensajealert(context, "📊 Excel guardado en Descargas: ${outFile.name}")
+        }
+    } catch (e: Exception) {
+        mensajealert(context, "❌ Error exportando Excel: ${e.localizedMessage}")
+    }
+}
+
 fun guardarCalificacionesEnFirestore(
     nominaId: String,
     estudiantes: List<TablaConfig.EstudianteCalificacion>,

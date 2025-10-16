@@ -1,5 +1,6 @@
 package com.holman.sgd.resources.config
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.layout.Arrangement
@@ -11,7 +12,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -30,6 +30,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -46,122 +47,136 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import com.google.firebase.firestore.FirebaseFirestore
 import com.holman.sgd.resources.CustomButton
+import com.holman.sgd.resources.FondoScreenDefault
 import com.holman.sgd.resources.mensajealert
 import com.holman.sgd.resources.screens.isTablet
 import com.holman.sgd.ui.theme.BackgroundDefault
 import com.holman.sgd.ui.theme.ButtonDarkGray
 import com.holman.sgd.ui.theme.ButtonDarkPrimary
 
-// Data class para los items
 data class AcademicItem(
     val id: String = "",
     val nombre: String = "",
     val timestamp: Long = 0L
 )
-// 🔹 NUEVA PANTALLA COMPLETA PARA GESTIÓN ACADÉMICA — BOTÓN ABAJO FIJO
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GestionAcademicaScreen(
     onNavigateBack: () -> Unit
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(BackgroundDefault)
-            .padding(16.dp)
-    ) {
-        // 🔹 Contenedor del contenido principal (LazyRow con tarjetas)
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth(),
-            contentAlignment = Alignment.TopStart
-        ) {
-            Card(
-                modifier = Modifier.fillMaxSize(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = BackgroundDefault)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(16.dp)
-                ) {
-                    // Título
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = "Gestión Académica",
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(bottom = 16.dp)
-                        )
-                    }
+    // 🔹 Control del botón físico o gesto de retroceso
+    BackHandler(enabled = true) {
+        onNavigateBack()
+    }
 
-                    val listState = rememberLazyListState()
-                    val flingBehavior = rememberSnapFlingBehavior(lazyListState = listState)
-                    LazyRow(
-                        state = listState,
-                        flingBehavior = flingBehavior,
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 16.dp),
-                        modifier = Modifier.fillMaxSize()
+    // 🔹 Contenedor raíz con fondo e interfaz
+    Box(modifier = Modifier.fillMaxSize()) {
+        // Fondo global con color + imagen (sin parámetros)
+        FondoScreenDefault()
+
+        // Contenido principal encima del fondo
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                contentAlignment = Alignment.TopStart
+            ) {
+                Card(
+                    modifier = Modifier.fillMaxSize(),
+                    shape = RoundedCornerShape(0.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color.Transparent
+                    )
+                )
+                {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(16.dp)
                     ) {
-                        item {
-                            Box(Modifier.fillParentMaxWidth()) {
-                                InputCard(Icons.Default.School, "Instituciones", "instituciones")
-                            }
+                        // 🔹 Título superior
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = "Gestión Académica",
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(bottom = 16.dp)
+                            )
                         }
-                        item {
-                            Box(Modifier.fillParentMaxWidth()) {
-                                InputCard(Icons.Default.Person, "Docentes", "docentes")
+
+                        // 🔹 Carrusel de tarjetas (LazyRow)
+                        val listState = rememberLazyListState()
+                        val flingBehavior = rememberSnapFlingBehavior(lazyListState = listState)
+
+                        LazyRow(
+                            state = listState,
+                            flingBehavior = flingBehavior,
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 16.dp),
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            item {
+                                Box(Modifier.fillParentMaxWidth()) {
+                                    InputCard(Icons.Default.School, "Instituciones", "instituciones")
+                                }
                             }
-                        }
-                        item {
-                            Box(Modifier.fillParentMaxWidth()) {
-                                InputCard(Icons.Default.Class, "Cursos", "cursos")
+                            item {
+                                Box(Modifier.fillParentMaxWidth()) {
+                                    InputCard(Icons.Default.Person, "Docentes", "docentes")
+                                }
                             }
-                        }
-                        item {
-                            Box(Modifier.fillParentMaxWidth()) {
-                                InputCard(Icons.Default.People, "Paralelos", "paralelos")
+                            item {
+                                Box(Modifier.fillParentMaxWidth()) {
+                                    InputCard(Icons.Default.Class, "Cursos", "cursos")
+                                }
                             }
-                        }
-                        item {
-                            Box(Modifier.fillParentMaxWidth()) {
-                                InputCard(Icons.Default.AutoStories, "Asignaturas", "asignaturas")
+                            item {
+                                Box(Modifier.fillParentMaxWidth()) {
+                                    InputCard(Icons.Default.People, "Paralelos", "paralelos")
+                                }
                             }
-                        }
-                        item {
-                            Box(Modifier.fillParentMaxWidth()) {
-                                InputCard(Icons.Default.Star, "Especialidades", "especialidades")
+                            item {
+                                Box(Modifier.fillParentMaxWidth()) {
+                                    InputCard(Icons.Default.AutoStories, "Asignaturas", "asignaturas")
+                                }
                             }
-                        }
-                        item {
-                            Box(Modifier.fillParentMaxWidth()) {
-                                InputCard(Icons.Default.Event, "Periodos Lectivos", "periodos")
+                            item {
+                                Box(Modifier.fillParentMaxWidth()) {
+                                    InputCard(Icons.Default.Star, "Especialidades", "especialidades")
+                                }
+                            }
+                            item {
+                                Box(Modifier.fillParentMaxWidth()) {
+                                    InputCard(Icons.Default.Event, "Periodos Lectivos", "periodos")
+                                }
                             }
                         }
                     }
                 }
             }
+
+            // 🔹 Botón persistente al final
+            CustomButton(
+                text = "Volver",
+                borderColor = ButtonDarkGray,
+                onClick = onNavigateBack
+            )
         }
-        // 🔹 Botón Volver siempre fijo al fondo (estilo como en Asistencias)
-        CustomButton(
-            text = "Volver",
-            borderColor = ButtonDarkGray,
-            onClick = onNavigateBack
-        )
     }
 }
 
-
-////
-// 🔹 CARD EXPANDIDO CON LISTADO, EDICIÓN Y ELIMINACIÓN
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun InputCard(
@@ -193,7 +208,7 @@ fun InputCard(
         elevation = CardDefaults.cardElevation(2.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xFFF8F9FA))
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(20.dp)) {
 
             // Encabezado con ícono + título
             Row(
@@ -345,61 +360,75 @@ fun InputCard(
         }
     }
 
-    // Dialog de confirmación para eliminar
+// Dialog de confirmación para eliminar (con sombra visible y fondo BackgroundDefault)
     showDeleteDialog?.let { item ->
-        AlertDialog(
-            onDismissRequest = { showDeleteDialog = null },
-            containerColor = BackgroundDefault,
-            title = {
-                Text(
-                    "Confirmar eliminación",
-                    modifier = Modifier.fillMaxWidth(),
-                    textAlign = TextAlign.Center,
-                    fontWeight = FontWeight.Bold
-                )
-            },
-            text = {
-                Text(
-                    text = "¿Estás seguro de que quieres eliminar '${item.nombre}'?",
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            },
-            confirmButton = {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+        Dialog(
+            onDismissRequest = { showDeleteDialog = null }
+        ) {
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = BackgroundDefault,     // color del cuadro del diálogo
+                tonalElevation = 0.dp,
+                shadowElevation = 16.dp,       // << sombra real
+                // Opcional: halo/borde sutil para destacar en fondos muy claros u oscuros
+                // border = BorderStroke(1.dp, Color.Black.copy(alpha = 0.08f)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        CustomButton(
-                            text = "Eliminar",
-                            borderColor = MaterialTheme.colorScheme.error,
-                            onClick = {
-                                eliminarItem(coleccion, item.id) {
-                                    mensajealert(context, "✅  Eliminado correctamente")
-                                    showDeleteDialog = null
-                                    cargarItems(coleccion) { items = it }
+                    Text(
+                        "Confirmar eliminación",
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.Center,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Spacer(Modifier.height(12.dp))
+
+                    Text(
+                        text = "¿Estás seguro de que quieres eliminar '${item.nombre}'?",
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(Modifier.height(20.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            CustomButton(
+                                text = "Eliminar",
+                                borderColor = MaterialTheme.colorScheme.error,
+                                onClick = {
+                                    eliminarItem(coleccion, item.id) {
+                                        mensajealert(context, "✅  Eliminado correctamente")
+                                        showDeleteDialog = null
+                                        cargarItems(coleccion) { items = it }
+                                    }
                                 }
-                            }
-                        )
-                    }
-                    Column(modifier = Modifier.weight(1f)) {
-                        CustomButton(
-                            text = "Cancelar",
-                            borderColor = ButtonDarkGray,
-                            onClick = { showDeleteDialog = null }
-                        )
+                            )
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            CustomButton(
+                                text = "Cancelar",
+                                borderColor = ButtonDarkGray,
+                                onClick = { showDeleteDialog = null }
+                            )
+                        }
                     }
                 }
             }
-        )
+        }
     }
+
 }
 
-/////////////////
-/////////////////
-
-// 🔹 COMPONENTE PARA CADA ITEM EN LA LISTA
 @Composable
 fun ItemRow(
     item: AcademicItem,
@@ -452,11 +481,6 @@ fun ItemRow(
     }
 }
 
-
-
-
-
-// 🔹 FUNCIONES PARA FIRESTORE
 fun cargarItems(coleccion: String, onSuccess: (List<AcademicItem>) -> Unit) {
     FirebaseFirestore.getInstance()
         .collection("gestionAcademica")

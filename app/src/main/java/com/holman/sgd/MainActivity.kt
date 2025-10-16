@@ -15,6 +15,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material3.*
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.Icon
@@ -45,6 +47,7 @@ import com.holman.sgd.resources.*
 import com.holman.sgd.resources.screens.*
 import com.holman.sgd.resources.nominas.*
 import com.holman.sgd.ui.theme.*
+import androidx.compose.material3.HorizontalDivider  // ← reemplaza Divider
 
 // MAIN ACTIVITY
 class MainActivity : ComponentActivity() {
@@ -73,7 +76,6 @@ fun App() {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
-    // 👇 Usuario actual de Firebase
     val currentUser = rememberFirebaseUser()
 
     ModalNavigationDrawer(
@@ -136,9 +138,7 @@ fun DrawerContent(
         drawerContainerColor = BackgroundBar,
         drawerContentColor = TextDefaultWhite
     ) {
-        Column(
-            modifier = Modifier.fillMaxSize()
-        ) {
+        Column(modifier = Modifier.fillMaxSize()) {
             // Header
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -201,14 +201,16 @@ fun DrawerContent(
             }
         }
     }
-
 }
 
-
 // Definición de pantallas con íconos
-sealed class Screen(val route: String, val title: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
+sealed class Screen(
+    val route: String,
+    val title: String,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector
+) {
     object inicio : Screen("inicio", "Inicio", Icons.Default.Home)
-    object nominas : Screen("nominas", "Nóminas", Icons.Default.List)
+    object nominas : Screen("nominas", "Nóminas", Icons.AutoMirrored.Filled.List) // ← deprec fix
     object calificaciones : Screen("calificaciones", "Calificaciones", Icons.Default.Grade)
     object asistencias : Screen("asistencias", "Asistencias", Icons.Default.Event)
     object tutoria : Screen("tutoria", "Tutoría", Icons.Default.People)
@@ -233,8 +235,8 @@ fun NavigationHost(navController: NavHostController) {
         composable(Screen.tutoria.route) { Tutoria() }
         composable(Screen.documentos.route) { Documentos() }
         composable(Screen.varios.route) { Varios() }
-        composable(Screen.config.route) { ConfiguracionScreen() }
-        composable(Screen.about.route) { AboutScreen() }
+        composable(Screen.config.route) { Configuracion() }
+        composable(Screen.about.route) { About() }
     }
 }
 
@@ -252,7 +254,6 @@ class AppState(
         }
     }
 }
-
 
 @Composable
 fun AccountMenuIcon(
@@ -284,7 +285,7 @@ fun AccountMenuIcon(
             modifier = Modifier
                 .widthIn(min = 260.dp)
                 .clip(RoundedCornerShape(12.dp))
-                .background(BackgroundDefault)   // 👈 Fondo del popup
+                .background(BackgroundDefault)
         ) {
             // Encabezado
             Column(
@@ -294,7 +295,7 @@ fun AccountMenuIcon(
             ) {
                 Text(
                     text = displayName,
-                    color = TextDefaultBlack,       // 👈 Texto negro
+                    color = TextDefaultBlack,
                     fontWeight = FontWeight.Bold,
                     fontSize = 16.sp
                 )
@@ -302,7 +303,6 @@ fun AccountMenuIcon(
 
                 Column(modifier = Modifier.padding(start = 20.dp)) {
 
-                    // • Correo con icono
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             imageVector = Icons.Default.Email,
@@ -320,7 +320,6 @@ fun AccountMenuIcon(
 
                     Spacer(Modifier.height(8.dp))
 
-                    // • Estado de verificación con icono
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             imageVector = if (verified) Icons.Default.Verified else Icons.Default.ErrorOutline,
@@ -336,19 +335,18 @@ fun AccountMenuIcon(
                         )
                     }
                 }
-
-
             }
 
-            Divider(color = TextDefaultBlack.copy(alpha = 0.1f))
+            // Antes: Divider(...)
+            HorizontalDivider(color = TextDefaultBlack.copy(alpha = 0.1f))
 
             DropdownMenuItem(
                 text = { Text("Cerrar sesión", color = TextDefaultBlack) },
                 leadingIcon = {
                     Icon(
-                        imageVector = Icons.Default.Logout,
+                        imageVector = Icons.AutoMirrored.Filled.Logout, // ← deprec fix
                         contentDescription = null,
-                        tint = TextDefaultBlack       // 👈 Icono negro
+                        tint = TextDefaultBlack
                     )
                 },
                 onClick = {
@@ -356,15 +354,14 @@ fun AccountMenuIcon(
                     signOutAndOpenLogin(context)
                 },
                 colors = MenuDefaults.itemColors(
-                    textColor = TextDefaultBlack,         // 👈 Ítem texto negro
-                    leadingIconColor = TextDefaultBlack,  // 👈 Ítem icono negro
+                    textColor = TextDefaultBlack,
+                    leadingIconColor = TextDefaultBlack,
                     trailingIconColor = TextDefaultBlack
                 )
             )
         }
     }
 }
-
 
 // Observa el estado de FirebaseAuth y expone el usuario actual como State
 @Composable

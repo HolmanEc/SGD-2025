@@ -1,61 +1,30 @@
 package com.holman.sgd.resources.config
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.holman.sgd.ui.theme.SGDTheme
+import com.holman.sgd.ui.theme.BackgroundDefault
 
 @Composable
-fun AparienciaScreen(
-    darkThemeEnabled: Boolean = false,
-    onThemeChange: (Boolean) -> Unit
-) {
-    Column(
+fun AparienciaScreen(onNavigateBack: () -> Unit) {
+    BackHandler(enabled = true) { onNavigateBack() } // Por qué: mantener UX de back
+
+    Box(
         modifier = Modifier
             .fillMaxSize()
+            .background(BackgroundDefault)
             .padding(16.dp),
-        verticalArrangement = Arrangement.Top,
-        horizontalAlignment = Alignment.CenterHorizontally
+        contentAlignment = Alignment.Center
     ) {
         Text(
-            text = "🎨 Apariencia",
-            fontSize = 24.sp,
-            fontWeight = FontWeight.Bold,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth().padding(vertical = 20.dp)
-        )
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
-        ) {
-            Text(
-                text = "Tema oscuro",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier.weight(1f)
-            )
-
-            Switch(
-                checked = darkThemeEnabled,
-                onCheckedChange = { onThemeChange(it) }
-            )
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        Text(
-            text = if(darkThemeEnabled) "Modo oscuro activado" else "Modo claro activado",
-            fontSize = 14.sp,
-            color = MaterialTheme.colorScheme.primary
+            text = "Apariencia",
+            style = MaterialTheme.typography.titleLarge
         )
     }
 }

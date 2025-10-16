@@ -75,107 +75,37 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.Dp
-import com.holman.sgd.ui.theme.TextoBotonClaro
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.ui.text.style.TextOverflow
 import com.holman.sgd.resources.components.getColorsCardsInicio
 import com.holman.sgd.resources.screens.isTablet
-import com.holman.sgd.ui.theme.BordeGris
-import com.holman.sgd.ui.theme.BtnFlotanteGuardarEnNomiba
-import com.holman.sgd.ui.theme.FondoGris
-import com.holman.sgd.ui.theme.TextDefaultBlack
-import com.holman.sgd.ui.theme.TextDefaultWhite
-import com.holman.sgd.ui.theme.TextoClaroLight
-
+import com.holman.sgd.ui.theme.*
+import androidx.compose.foundation.Image
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.ui.layout.ContentScale
+import com.holman.sgd.ui.theme.BackgroundDefault
 
 @Composable
-fun CustomButtonokokokoko(
-    text: String,
-    borderColor: Color,
-    onClick: () -> Unit,
-    buttonHeight: Dp = 45.dp
-) {
-    val scope = rememberCoroutineScope()
-    var pressed by remember { mutableStateOf(false) }
-
-    // 🎨 Animación del relleno
-    val backgroundColor by animateColorAsState(
-        targetValue = if (pressed) borderColor.copy(alpha = 0.8f) else Color.Transparent,
-        animationSpec = tween(durationMillis = 150),
-        label = "boxButtonBackground"
-    )
-
-    Box(
-        modifier = Modifier
-            .padding(vertical = 4.dp)
-            .fillMaxWidth()
-            .height(buttonHeight)
-            .background(backgroundColor, RoundedCornerShape(50))
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onPress = {
-                        pressed = true
-                        try {
-                            // Espera hasta que el usuario suelte
-                            awaitRelease()
-                        } finally {
-                            pressed = false
-                        }
-                    },
-                    onTap = {
-                        // 🔹 Lanza acción al final del tap
-                        scope.launch {
-                            onClick()
-                        }
-                    }
-                )
-            }
-            .drawBehind {
-                drawIntoCanvas { canvas ->
-                    val paint = Paint().asFrameworkPaint().apply {
-                        isAntiAlias = true
-                        style = android.graphics.Paint.Style.STROKE
-                        strokeWidth = 3f
-                        setShadowLayer(
-                            12f, 0f, 0f,
-                            borderColor.toArgb()
-                        )
-                    }
-
-                    val gradient = LinearGradientShader(
-                        from = Offset(0f, 0f),
-                        to = Offset(size.width, 0f),
-                        colors = listOf(
-                            borderColor,
-                            borderColor,
-                            //Color(0xFFF11BEE),
-                            borderColor
-                        ),
-                        colorStops = listOf(0f, 0.5f, 1f)
-                    )
-                    paint.shader = gradient
-
-                    canvas.nativeCanvas.drawRoundRect(
-                        1f, 1f,
-                        size.width - 1f, size.height - 1f,
-                        size.height / 2,
-                        size.height / 2,
-                        paint
-                    )
-                }
-            },
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = text.uppercase(),
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 2.sp,
-            color = if (pressed) TextoBotonClaro  else borderColor
+fun FondoScreenDefault() {
+    Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(BackgroundDefault)
+        )
+        Image(
+            painter = androidx.compose.ui.res.painterResource(
+                id = com.holman.sgd.R.drawable.fondodefault
+            ),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize(),
+            alpha = 0.06f
         )
     }
 }
+
 
 
 @Composable
@@ -288,21 +218,11 @@ fun CustomButton(
     }
 }
 
-
-
-
-
-
-
-
-
-
-
 @Composable
 fun NominaCard(
     nomina: NominaResumen,
     index: Int,
-    onClick: (Color) -> Unit // 👈 enviamos el color al seleccionar
+    onClick: (Color) -> Unit
 ) {
     val cardColors = getColorsCardsInicio()
     val backgroundColor = cardColors[index % cardColors.size]
@@ -550,52 +470,57 @@ fun InfoItem(icon: ImageVector, label: String, value: String) {
 }
 
 @Composable
-fun LoadingDotsOverlay(isLoading: Boolean) {
-    if (isLoading) {
-        // Fondo oscuro semitransparente
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.5f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                repeat(3) { index ->
-                    val infiniteTransition = rememberInfiniteTransition()
-                    val offsetY by infiniteTransition.animateFloat(
-                        initialValue = 0f,
-                        targetValue = -20f,
-                        animationSpec = infiniteRepeatable(
-                            animation = tween(durationMillis = 500, easing = LinearEasing),
-                            repeatMode = RepeatMode.Reverse,
-                            initialStartOffset = StartOffset(index * 150)
-                        )
-                    )
-                    Box(
-                        modifier = Modifier
-                            .size(16.dp)
-                            .offset(y = offsetY.dp)
-                            .background(Color.White, shape = CircleShape)
-                    )
-                }
-            }
-        }
-    }
-}
+fun LoadingDotsOverlay(
+    isLoading: Boolean,
+    //backgroundImage: Painter = painterResource(R.drawable.fondoloading),
+    imageAlpha: Float = 0.05f,      // Transparencia de la imagen (0 = invisible, 1 = opaca)
+    scrimAlpha: Float = 0.35f       // Opacidad de la máscara oscura
+) {
+    if (!isLoading) return
 
-@Composable
-fun LoadingDotsOverlayx(isLoading: Boolean) {
-    if (isLoading) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        // 1) Imagen semitransparente sobre tu UI existente
+        //Image(
+        //    painter = backgroundImage,
+        //    contentDescription = null,
+        //    contentScale = ContentScale.Crop,
+        //   modifier = Modifier
+        //       .fillMaxSize()
+        //       .alpha(imageAlpha)
+        // )
+
+        // 2) Máscara oscura encima de la imagen
         Box(
             modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.5f)),
-            contentAlignment = Alignment.Center
+                .matchParentSize()
+                .background(Color.Black.copy(alpha = scrimAlpha))
+        )
+
+        // 3) Puntos animados arriba de todo
+        Row(
+            modifier = Modifier.align(Alignment.Center),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            RadialLoader()
+            repeat(3) { index ->
+                val transition = rememberInfiniteTransition(label = "dots")
+                val offsetY by transition.animateFloat(
+                    initialValue = 0f,
+                    targetValue = -20f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(durationMillis = 500, easing = LinearEasing),
+                        repeatMode = RepeatMode.Reverse,
+                        initialStartOffset = StartOffset(index * 150)
+                    ),
+                    label = "dot-$index"
+                )
+                Box(
+                    modifier = Modifier
+                        .size(16.dp)
+                        .offset(y = offsetY.dp)
+                        .background(colorPuntos, shape = CircleShape) // o MaterialTheme.colorScheme.primary
+                )
+            }
         }
     }
 }
@@ -707,6 +632,50 @@ fun FloatingSaveButton(
 }
 
 @Composable
+fun FloatingExportButton(
+    visible: Boolean = true,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    icon: ImageVector = Icons.Default.FileDownload,
+    contentDesc: String = "Exportar",
+    container: Color = BtnFlotanteExportarNotas,
+    content: Color = TextDefaultWhite,
+    cornerRadius: Float = 16f
+) {
+    if (!visible) return
+
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    val targetScale = if (isPressed) 0.95f else 1f
+    val scale by animateFloatAsState(
+        targetValue = targetScale,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "fabExportScale"
+    )
+
+    FloatingActionButton(
+        onClick = onClick,
+        interactionSource = interactionSource,
+        containerColor = container,
+        contentColor = content,
+        shape = RoundedCornerShape(cornerRadius),
+        elevation = FloatingActionButtonDefaults.elevation(
+            defaultElevation = 6.dp,
+            pressedElevation = 10.dp
+        ),
+        modifier = modifier.graphicsLayer(scaleX = scale, scaleY = scale)
+    ) {
+        Icon(icon, contentDescription = contentDesc)
+    }
+}
+
+
+
+@Composable
 fun VistaPreviaTablaExcel(
     modifier: Modifier = Modifier.fillMaxSize()
 ) {
@@ -783,7 +752,7 @@ fun VistaPreviaTablaExcel(
                             Spacer(modifier = Modifier.padding(horizontal = 6.dp))
                         }
                     }
-                    Divider(color = BordeGris.copy(alpha = 0.3f), thickness = 0.5.dp)
+                    HorizontalDivider(thickness = 0.5.dp, color = BordeGris.copy(alpha = 0.3f))
                 }
             }
         }
@@ -801,17 +770,145 @@ fun VistaPreviaTablaExcel(
 }
 
 
+@Suppress("DEPRECATION") // evita el warning de 'view' obsoleto
+fun mensajealert(context: Context, message: String) {
+    val textView = TextView(context).apply {
+        text = message
+        setTextColor(android.graphics.Color.BLACK)
+        textSize = 14f
+        gravity = Gravity.CENTER
+        setPadding(40, 30, 40, 30)
+        background = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = 40f
+            setColor(android.graphics.Color.WHITE)
+        }
+    }
+
+    val cardView = androidx.cardview.widget.CardView(context).apply {
+        radius = 40f
+        cardElevation = 12f
+        setCardBackgroundColor(android.graphics.Color.WHITE)
+        addView(textView)
+        setContentPadding(0, 0, 0, 0)
+    }
+
+    val toast = Toast(context).apply {
+        duration = Toast.LENGTH_SHORT
+        view = cardView
+        val yOffset = (16 * context.resources.displayMetrics.density).toInt()
+        setGravity(Gravity.TOP or Gravity.CENTER_HORIZONTAL, 0, yOffset)
+    }
+
+    toast.show()
+}
 
 
 
+////////////////////
+
+@Composable
+fun LoadingDotsOverlayx(isLoading: Boolean) {
+    if (isLoading) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.5f)),
+            contentAlignment = Alignment.Center
+        ) {
+            RadialLoader()
+        }
+    }
+}
 
 
+@Composable
+fun CustomButtonokokokoko(
+    text: String,
+    borderColor: Color,
+    onClick: () -> Unit,
+    buttonHeight: Dp = 45.dp
+) {
+    val scope = rememberCoroutineScope()
+    var pressed by remember { mutableStateOf(false) }
 
+    // 🎨 Animación del relleno
+    val backgroundColor by animateColorAsState(
+        targetValue = if (pressed) borderColor.copy(alpha = 0.8f) else Color.Transparent,
+        animationSpec = tween(durationMillis = 150),
+        label = "boxButtonBackground"
+    )
 
+    Box(
+        modifier = Modifier
+            .padding(vertical = 4.dp)
+            .fillMaxWidth()
+            .height(buttonHeight)
+            .background(backgroundColor, RoundedCornerShape(50))
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onPress = {
+                        pressed = true
+                        try {
+                            // Espera hasta que el usuario suelte
+                            awaitRelease()
+                        } finally {
+                            pressed = false
+                        }
+                    },
+                    onTap = {
+                        // 🔹 Lanza acción al final del tap
+                        scope.launch {
+                            onClick()
+                        }
+                    }
+                )
+            }
+            .drawBehind {
+                drawIntoCanvas { canvas ->
+                    val paint = Paint().asFrameworkPaint().apply {
+                        isAntiAlias = true
+                        style = android.graphics.Paint.Style.STROKE
+                        strokeWidth = 3f
+                        setShadowLayer(
+                            12f, 0f, 0f,
+                            borderColor.toArgb()
+                        )
+                    }
 
+                    val gradient = LinearGradientShader(
+                        from = Offset(0f, 0f),
+                        to = Offset(size.width, 0f),
+                        colors = listOf(
+                            borderColor,
+                            borderColor,
+                            //Color(0xFFF11BEE),
+                            borderColor
+                        ),
+                        colorStops = listOf(0f, 0.5f, 1f)
+                    )
+                    paint.shader = gradient
 
-
-
+                    canvas.nativeCanvas.drawRoundRect(
+                        1f, 1f,
+                        size.width - 1f, size.height - 1f,
+                        size.height / 2,
+                        size.height / 2,
+                        paint
+                    )
+                }
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text.uppercase(),
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 2.sp,
+            color = if (pressed) TextoBotonClaro  else borderColor
+        )
+    }
+}
 
 
 @Composable
@@ -870,21 +967,6 @@ fun CustomButton1(
         )
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 @Composable
@@ -973,40 +1055,5 @@ fun CustomButtonok(
             color = if (pressed) Color.White else borderColor
         )
     }
-}
-
-
-fun mensajealert(context: Context, message: String) {
-    val textView = TextView(context).apply {
-        text = message
-        setTextColor(android.graphics.Color.BLACK)
-        textSize = 14f
-        gravity = Gravity.CENTER
-        setPadding(40, 30, 40, 30)
-        background = GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            cornerRadius = 40f
-            setColor(android.graphics.Color.WHITE)
-        }
-    }
-
-    val cardView = androidx.cardview.widget.CardView(context).apply {
-        radius = 40f
-        cardElevation = 12f
-        setCardBackgroundColor(android.graphics.Color.WHITE)
-        addView(textView)
-        setContentPadding(0,0,0,0)
-    }
-
-    val toast = Toast(context).apply {
-        duration = Toast.LENGTH_SHORT
-        view = cardView
-
-        // Convertir 16dp a píxeles para un margen superior relativo
-        val yOffset = (16 * context.resources.displayMetrics.density).toInt()
-        setGravity(Gravity.TOP or Gravity.CENTER_HORIZONTAL, 0, yOffset)
-    }
-
-    toast.show()
 }
 

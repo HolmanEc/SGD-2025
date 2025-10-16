@@ -11,8 +11,10 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Visibility
@@ -31,6 +33,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -50,7 +54,7 @@ import com.holman.sgd.resources.CustomButton
 import com.holman.sgd.resources.mensajealert
 import com.holman.sgd.resources.screens.isTablet
 import com.holman.sgd.ui.theme.*
-
+import com.holman.sgd.*
 
 private const val USUARIOS_COLLECTION = "usuarios" // ajusta si se llama distinto
 
@@ -143,29 +147,43 @@ class LoginActivity : ComponentActivity() {
         val remembered = securePrefs.getBoolean(KEY_REMEMBER, false)
         val savedEmail = securePrefs.getString(KEY_EMAIL, "") ?: ""
 
-        setContent {
-            LoginScreen(
-                initialEmail = if (remembered) savedEmail else "",
-                initialRemember = remembered,
-                onLogin = { email, password, remember ->
-                    signInUser(
-                        email = email,
-                        password = password,
-                        onSuccess = {
-                            if (remember) {
-                                securePrefs.edit()
-                                    .putBoolean(KEY_REMEMBER, true)
-                                    .putString(KEY_EMAIL, email)
-                                    .apply()
-                            } else {
-                                securePrefs.edit().clear().apply()
-                            }
-                            goToMainAndFinish()
-                        },
-                        onError = { msg -> mensajealert(this, msg) }
-                    )
+        setContent{
+            // 🔹 Splash de ARRANQUE (Compose-only)
+            AppStartSplashGate(
+                minShowMillis = 400L,
+                initializer = {
+                    // Precargas ligeras (no bloqueantes):
+                    // auth.currentUser // prefs ya leídos arriba
                 }
-            )
+            ) {
+                LoginScreen(
+                    initialEmail = if (remembered) savedEmail else "",
+                    initialRemember = remembered,
+                    // 👇 Nota: cambiamos la firma de onLogin para incluir un callback de resultado
+                    onLogin = { email, password, remember, reportResult ->
+                        signInUser(
+                            email = email,
+                            password = password,
+                            onSuccess = {
+                                if (remember) {
+                                    securePrefs.edit()
+                                        .putBoolean(KEY_REMEMBER, true)
+                                        .putString(KEY_EMAIL, email)
+                                        .apply()
+                                } else {
+                                    securePrefs.edit().clear().apply()
+                                }
+                                reportResult(true)   // avisa éxito (aunque navegamos ya)
+                                goToMainAndFinish()  // salta a Main
+                            },
+                            onError = { msg ->
+                                reportResult(false)  // oculta overlay post-login
+                                mensajealert(this, msg)
+                            }
+                        )
+                    }
+                )
+            }
         }
     }
 
@@ -176,9 +194,6 @@ class LoginActivity : ComponentActivity() {
         finish()
     }
 
-    // Login con Firebase
-// Login con Firebase (envía verificación solo la PRIMERA vez)
-// Login con Firebase (sin exigir verificación de correo)
     private fun signInUser(
         email: String,
         password: String,
@@ -227,7 +242,7 @@ class LoginActivity : ComponentActivity() {
 fun LoginScreen(
     initialEmail: String,
     initialRemember: Boolean,
-    onLogin: (String, String, Boolean) -> Unit
+    onLogin: (String, String, Boolean, (Boolean) -> Unit) -> Unit
 ) {
     var email by remember { mutableStateOf(initialEmail) }
     var password by remember { mutableStateOf("") }
@@ -255,7 +270,7 @@ fun LoginScreen(
 
     val passwordFocusRequester = remember { FocusRequester() }
 
-    // Colores “raya”
+    // Colores
     val fieldText = TextDefaultWhite
     val labelText = TextDefaultWhite.copy(alpha = 0.90f)
     val hintText = TextDefaultWhite.copy(alpha = 0.75f)
@@ -267,6 +282,13 @@ fun LoginScreen(
     val auth = remember { FirebaseAuth.getInstance() }
     var showResetDialog by remember { mutableStateOf(false) }
     var resetEmail by remember { mutableStateOf("") }
+
+    // 🔹 Estado de overlay POST-LOGIN
+    var loggingIn by remember { mutableStateOf(false) }
+
+    // 🔹 Control de teclado y foco
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
 
     Box(modifier = Modifier.fillMaxSize()) {
         // Fondo
@@ -280,6 +302,7 @@ fun LoginScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 90.dp)
                 .padding(top = 56.dp, bottom = 40.dp),
             verticalArrangement = Arrangement.Center,
@@ -319,11 +342,7 @@ fun LoginScreen(
                     label = { Text("Correo electrónico", color = labelText) },
                     placeholder = { Text("tu@correo.com", color = hintText) },
                     leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Filled.Email,
-                            contentDescription = null,
-                            tint = hintText
-                        )
+                        Icon(imageVector = Icons.Filled.Email, contentDescription = null, tint = hintText)
                     },
                     modifier = Modifier
                         .fillMaxWidth()
@@ -391,13 +410,7 @@ fun LoginScreen(
                 onValueChange = { password = it },
                 label = { Text("Contraseña", color = labelText) },
                 placeholder = { Text("••••••••", color = hintText) },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Outlined.Lock,
-                        contentDescription = null,
-                        tint = hintText
-                    )
-                },
+                leadingIcon = { Icon(imageVector = Icons.Outlined.Lock, contentDescription = null, tint = hintText) },
                 trailingIcon = {
                     IconButton(onClick = { showPass = !showPass }) {
                         Icon(
@@ -413,7 +426,19 @@ fun LoginScreen(
                     .focusRequester(passwordFocusRequester),
                 singleLine = true,
                 keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { onLogin(email, password, rememberEmail) }),
+                keyboardActions = KeyboardActions(
+                    onDone = {
+                        // 🔒 Cerrar teclado y soltar foco ANTES de iniciar login
+                        keyboardController?.hide()
+                        focusManager.clearFocus(force = true)
+
+                        loggingIn = true
+                        suggestionsExpanded = false
+                        onLogin(email, password, rememberEmail) { success ->
+                            if (!success) loggingIn = false // si falla, ocultamos overlay
+                        }
+                    }
+                ),
                 colors = TextFieldDefaults.colors(
                     focusedTextColor = fieldText,
                     unfocusedTextColor = fieldText,
@@ -429,10 +454,8 @@ fun LoginScreen(
 
             Spacer(Modifier.height(12.dp))
 
-
             // ===== Recordar correo + Olvidé mi contraseña =====
             if (isTablet()) {
-                // ✅ Tablet: en una sola fila como ya lo tenías
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth()
@@ -467,7 +490,6 @@ fun LoginScreen(
                     )
                 }
             } else {
-                // 📱 Teléfono: uno debajo del otro
                 Column(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -507,13 +529,25 @@ fun LoginScreen(
 
             Spacer(Modifier.height(22.dp))
 
-            // Botón login
+            // Botón login (cierra teclado, limpia foco, activa overlay y delega resultado)
             CustomButton(
                 text = "Iniciar sesión",
                 borderColor = ButtonWhitePrimary,
-                onClick = { onLogin(email, password, rememberEmail) }
+                onClick = {
+                    keyboardController?.hide()
+                    focusManager.clearFocus(force = true)
+
+                    loggingIn = true
+                    suggestionsExpanded = false
+                    onLogin(email, password, rememberEmail) { success ->
+                        if (!success) loggingIn = false
+                    }
+                }
             )
         }
+
+        // ===== Overlay POST-LOGIN =====
+        PostLoginSplashOverlay(visible = loggingIn)
     }
 
     // ===== Diálogo de restablecer contraseña =====
@@ -521,10 +555,7 @@ fun LoginScreen(
         AlertDialog(
             onDismissRequest = { showResetDialog = false },
             title = {
-                Box(
-                    modifier = Modifier.fillMaxWidth(),
-                    contentAlignment = Alignment.Center
-                ) {
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                     Text(
                         text = "Restablecer contraseña",
                         color = TextDefaultBlack,
@@ -540,10 +571,7 @@ fun LoginScreen(
                     verticalArrangement = Arrangement.Center,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(
-                        "Ingresa tu correo para enviarte el enlace de restablecimiento.",
-                        color = TextDefaultBlack
-                    )
+                    Text("Ingresa tu correo para enviarte el enlace de restablecimiento.", color = TextDefaultBlack)
                     Spacer(Modifier.height(12.dp))
                     TextField(
                         value = resetEmail,
@@ -591,9 +619,8 @@ fun LoginScreen(
                     }
                 }
             },
-            dismissButton = {}, // ✅ Ya no usamos dismissButton
+            dismissButton = {},
             containerColor = Color.White
         )
     }
-
 }

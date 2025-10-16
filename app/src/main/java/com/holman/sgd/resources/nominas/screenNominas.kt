@@ -1,6 +1,7 @@
 package com.holman.sgd.resources.nominas
 
 import android.annotation.SuppressLint
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -23,9 +24,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.navigation.NavHostController
 import com.holman.sgd.resources.CustomButton
+import com.holman.sgd.resources.FondoScreenDefault
 import com.holman.sgd.resources.screens.isTablet
 import kotlin.String
 
+
+// Enum para controlar qué formulario se muestra
 enum class NominaFormulario {
     MENU, CREAR, REVISAR
 }
@@ -37,6 +41,17 @@ fun Nominas(navController: NavHostController) {
 
     val datosExcel = remember { mutableStateListOf<List<String>>() }
 
+    // Intercepta “Atrás” a nivel del módulo
+    BackHandler(enabled = true) {
+        when (formularioActual) {
+            NominaFormulario.MENU -> navController.popBackStack()
+            else -> {
+                formularioActual = NominaFormulario.MENU
+                datosExcel.clear()
+            }
+        }
+    }
+
     when (formularioActual) {
         NominaFormulario.MENU -> MenuNominas(
             navController = navController,
@@ -44,7 +59,10 @@ fun Nominas(navController: NavHostController) {
         )
         NominaFormulario.CREAR -> {
             CrearNomina(
-                onBack = { formularioActual = NominaFormulario.MENU },
+                onBack = {
+                    formularioActual = NominaFormulario.MENU
+                    datosExcel.clear()
+                },
                 onCargarArchivo = { uri ->
                     datosExcel.clear()
                     datosExcel.addAll(procesarArchivoExcel(context, uri))
@@ -53,9 +71,12 @@ fun Nominas(navController: NavHostController) {
                 datos = datosExcel
             )
         }
-        NominaFormulario.REVISAR -> revisarNomina { formularioActual = NominaFormulario.MENU }
+        NominaFormulario.REVISAR -> revisarNomina {
+            formularioActual = NominaFormulario.MENU
+        }
     }
 }
+
 
 @SuppressLint("UnusedBoxWithConstraintsScope")
 @Composable
@@ -77,7 +98,7 @@ fun MenuNominas(
     )
 
     Scaffold(
-        containerColor = BackgroundDefault,
+        containerColor = Color.Transparent, // 🔹 transparente para dejar ver el fondo
         bottomBar = {
             Box(
                 modifier = Modifier
@@ -93,66 +114,70 @@ fun MenuNominas(
             }
         }
     ) { innerPadding ->
-        BoxWithConstraints(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding) // respeta el área del botón
-        ) {
-            val maxWidthDp = maxWidth
-            val cardsPerRow = if (maxWidthDp < 700.dp) 2 else 4
+        Box(modifier = Modifier.fillMaxSize()) {
+            FondoScreenDefault()
 
-            Column(
+            BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 16.dp)
-                    .verticalScroll(rememberScrollState()),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .padding(innerPadding)
             ) {
-                Text(
-                    text = "Gestión de nóminas",
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextoOscuro,
-                    modifier = Modifier.padding(bottom = 10.dp)
-                )
-                Text(
-                    text = "Aquí puedes crear o revisar las nóminas guardadas en el sistema.\n" +
-                            "Utiliza las opciones para administrar la información de nóminas de manera rápida y sencilla.",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Normal,
-                    color = TextoOscuro,
-                    modifier = Modifier.padding(bottom = 30.dp),
-                    textAlign = TextAlign.Center
-                )
+                val maxWidthDp = maxWidth
+                val cardsPerRow = if (maxWidthDp < 700.dp) 2 else 4
 
-                // 🔹 Filas dinámicas de cards
-                for (i in cards.indices step cardsPerRow) {
-                    val rowItems = cards.drop(i).take(cardsPerRow)
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp)
+                        .verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "Gestión de nóminas",
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextoOscuro,
+                        modifier = Modifier.padding(bottom = 10.dp)
+                    )
+                    Text(
+                        text = "Aquí puedes crear o revisar las nóminas guardadas en el sistema.\n" +
+                                "Utiliza las opciones para administrar la información de nóminas de manera rápida y sencilla.",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Normal,
+                        color = TextoOscuro,
+                        modifier = Modifier.padding(bottom = 30.dp),
+                        textAlign = TextAlign.Center
+                    )
 
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(
-                            16.dp,
-                            Alignment.CenterHorizontally
-                        )
-                    ) {
-                        rowItems.forEach { (title, icon, description) ->
-                            val onClick = when (title) {
-                                "Crear nómina" -> { { onFormularioSeleccionado(NominaFormulario.CREAR) } }
-                                "Revisar nómina" -> { { onFormularioSeleccionado(NominaFormulario.REVISAR) } }
-                                else -> { {} }
-                            }
+                    // 🔹 Filas dinámicas de cards
+                    for (i in cards.indices step cardsPerRow) {
+                        val rowItems = cards.drop(i).take(cardsPerRow)
 
-                            MenuCardNominas(
-                                title = title,
-                                iconResId = icon,
-                                backgroundColor = Card1,
-                                descriptionCard = description,
-                                modifier = Modifier.weight(1f),
-                                onClick = onClick
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(
+                                16.dp,
+                                Alignment.CenterHorizontally
                             )
+                        ) {
+                            rowItems.forEach { (title, icon, description) ->
+                                val onClick = when (title) {
+                                    "Crear nómina" -> { { onFormularioSeleccionado(NominaFormulario.CREAR) } }
+                                    "Revisar nómina" -> { { onFormularioSeleccionado(NominaFormulario.REVISAR) } }
+                                    else -> { {} }
+                                }
+
+                                MenuCardNominas(
+                                    title = title,
+                                    iconResId = icon,
+                                    backgroundColor = Card1,
+                                    descriptionCard = description,
+                                    modifier = Modifier.weight(1f),
+                                    onClick = onClick
+                                )
+                            }
                         }
                     }
                 }
@@ -160,6 +185,8 @@ fun MenuNominas(
         }
     }
 }
+
+/////////////
 
 @Composable
 fun MenuCardNominas(

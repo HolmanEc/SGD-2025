@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import com.google.firebase.firestore.FirebaseFirestore
+import com.holman.sgd.R
 import com.holman.sgd.resources.components.getColorsCardsInicio
 import com.holman.sgd.ui.theme.BackgroundDefault
 import com.holman.sgd.ui.theme.ButtonDarkGray
@@ -79,6 +80,8 @@ fun generarIdUnicoEstudiante(cedula: String, nombre: String): String {
 
 @Composable
 fun Asistencias(navController: NavHostController) {
+    val context = LocalContext.current
+
     var nominas by remember { mutableStateOf<List<NominaResumen>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -88,6 +91,11 @@ fun Asistencias(navController: NavHostController) {
 
     // El hijo registrará aquí su handler de back (guardar si cambió y luego onBack)
     var detalleOnBackRequest by remember { mutableStateOf<(() -> Unit)?>(null) }
+
+    // Prefetch antes de abrir el detalle
+    var isOpeningDetail by remember { mutableStateOf(false) }
+    var prefetchAlumnos by remember { mutableStateOf<List<EstudianteAsistencia>?>(null) }
+    var prefetchFecha by remember { mutableStateOf(getHoy()) }
 
     // Cargar nóminas al iniciar
     LaunchedEffect(Unit) {
@@ -106,14 +114,12 @@ fun Asistencias(navController: NavHostController) {
     // El PADRE captura SIEMPRE el back del sistema
     androidx.activity.compose.BackHandler(enabled = true) {
         if (selectedNomina == null) {
-            // Estamos en la lista -> navegar hacia atrás en el navController
             navController.popBackStack()
         } else {
-            // Estamos en el detalle -> dejar que el handler del hijo se encargue (autosave + volver)
             detalleOnBackRequest?.invoke() ?: run {
-                // Fallback: si no se registró handler, simplemente volvemos a la lista
                 selectedNomina = null
                 selectedNominaColor = null
+                prefetchAlumnos = null
             }
         }
     }
@@ -125,19 +131,20 @@ fun Asistencias(navController: NavHostController) {
             onBack = {
                 selectedNomina = null
                 selectedNominaColor = null
-                detalleOnBackRequest = null // limpiar registro
+                detalleOnBackRequest = null
+                prefetchAlumnos = null
             },
-            onRegisterBackRequest = { handler ->
-                detalleOnBackRequest = handler
-            }
+            onRegisterBackRequest = { handler -> detalleOnBackRequest = handler },
+            // ✅ datos precargados para entrar “ya listo”
+            initialAlumnos = prefetchAlumnos,
+            initialFecha = prefetchFecha,
+            skipInitialLoad = prefetchAlumnos != null
         )
     } else {
         // Pantalla principal: lista de nóminas
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(BackgroundDefault)
-        ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            FondoScreenDefault()
+
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -187,8 +194,41 @@ fun Asistencias(navController: NavHostController) {
                                             nomina = nomina,
                                             index = index,
                                             onClick = { colorSeleccionado ->
-                                                selectedNomina = nomina
-                                                selectedNominaColor = colorSeleccionado
+                                                // 🔹 PREFETCH: mantenemos la lista visible hasta cargar todo
+                                                isOpeningDetail = true
+                                                val hoy = getHoy()
+                                                prefetchFecha = hoy
+
+                                                cargarAlumnosAsistenciaPorNomina(
+                                                    nominaId = nomina.id,
+                                                    onSuccess = { lista ->
+                                                        cargarAsistenciaExistente(
+                                                            nominaId = nomina.id,
+                                                            fecha = hoy,
+                                                            onSuccess = { asistenciaMap ->
+                                                                val mut = lista.toMutableList()
+                                                                aplicarAsistenciaCargada(mut, asistenciaMap)
+                                                                limpiarAsistenciasHuerfanas(nomina.id, hoy, mut)
+
+                                                                prefetchAlumnos = mut
+                                                                selectedNomina = nomina
+                                                                selectedNominaColor = colorSeleccionado
+                                                                isOpeningDetail = false
+                                                            },
+                                                            onError = {
+                                                                // Si falla asistencia, abrimos con alumnos igual
+                                                                prefetchAlumnos = lista
+                                                                selectedNomina = nomina
+                                                                selectedNominaColor = colorSeleccionado
+                                                                isOpeningDetail = false
+                                                            }
+                                                        )
+                                                    },
+                                                    onError = { msg ->
+                                                        isOpeningDetail = false
+                                                        mensajealert(context, "❌ $msg")
+                                                    }
+                                                )
                                             }
                                         )
                                     }
@@ -206,7 +246,10 @@ fun Asistencias(navController: NavHostController) {
                 )
             }
 
-            LoadingDotsOverlay(isLoading = isLoading)
+            // 🔸 Overlay combinado:
+            // - isLoading: carga inicial de la lista (lo que ya tenías)
+            // - isOpeningDetail: prefetch al abrir detalle
+            LoadingDotsOverlay(isLoading = isLoading || isOpeningDetail)
         }
     }
 }
@@ -266,17 +309,19 @@ fun ScreenNominaDetalleAsistencia(
     nomina: NominaResumen,
     headerColor: Color,
     onBack: () -> Unit,
-    onRegisterBackRequest: ((() -> Unit) -> Unit) // NUEVO: el hijo registra su handler en el padre
+    onRegisterBackRequest: ((() -> Unit) -> Unit),
+    initialAlumnos: List<EstudianteAsistencia>? = null,
+    initialFecha: String? = null,
+    skipInitialLoad: Boolean = false
 ) {
     val context = LocalContext.current
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
 
     val alumnos = remember { mutableStateListOf<EstudianteAsistencia>() }
     var isLoading by remember { mutableStateOf(true) }
-    var fecha by remember { mutableStateOf(getHoy()) }
+    var fecha by remember { mutableStateOf(initialFecha ?: getHoy()) }
     var isSaving by remember { mutableStateOf(false) }
 
-    // Estado unificado para overlay y visibilidad del FAB
     val isBusy by remember { derivedStateOf { isLoading || isSaving } }
 
     // Baseline (por fecha): snapshot inmutable de asistencia actual (idUnico -> presente)
@@ -302,7 +347,7 @@ fun ScreenNominaDetalleAsistencia(
             fecha = fecha,
             alumnos = alumnos,
             onSuccess = {
-                baseline = snapshotActual() // re-sellar baseline con lo persistido
+                baseline = snapshotActual()
                 isSaving = false
                 if (showToast) mensajealert(context, "✅ Asistencia guardada.")
                 onDone()
@@ -315,8 +360,19 @@ fun ScreenNominaDetalleAsistencia(
         )
     }
 
-    // Cargar alumnos + asistencia inicial
+    // ✅ Si llega data precargada, úsala y evita el loading inicial
+    LaunchedEffect(Unit) {
+        if (initialAlumnos != null) {
+            alumnos.clear()
+            alumnos.addAll(initialAlumnos)
+            baseline = snapshotActual()
+            isLoading = false
+        }
+    }
+
+    // Cargar alumnos + asistencia inicial SOLO si no hubo prefetch
     LaunchedEffect(nomina.id) {
+        if (skipInitialLoad) return@LaunchedEffect
         isLoading = true
         cargarAlumnosAsistenciaPorNomina(
             nominaId = nomina.id,
@@ -330,7 +386,7 @@ fun ScreenNominaDetalleAsistencia(
                     onSuccess = { asistenciaMap ->
                         aplicarAsistenciaCargada(alumnos, asistenciaMap)
                         limpiarAsistenciasHuerfanas(nomina.id, fecha, alumnos)
-                        baseline = snapshotActual() // sellar baseline para esta fecha
+                        baseline = snapshotActual()
                         isLoading = false
                     },
                     onError = {
@@ -364,7 +420,7 @@ fun ScreenNominaDetalleAsistencia(
         }
     }
 
-    // REGISTRAR en el PADRE el handler para el Back del sistema (igual que Calificaciones)
+    // Registrar en el PADRE el handler para el Back del sistema
     LaunchedEffect(nomina.id, alumnos, baseline, isBusy, fecha) {
         onRegisterBackRequest {
             if (!isBusy && hayCambios()) {
@@ -375,7 +431,7 @@ fun ScreenNominaDetalleAsistencia(
         }
     }
 
-    // Best-effort autosave cuando la pantalla va a background/cierre
+    // Autosave best-effort en background/cierre
     DisposableEffect(lifecycleOwner, alumnos, baseline, fecha) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) {

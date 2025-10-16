@@ -64,6 +64,20 @@ dependencies {
     implementation("org.apache.poi:poi:5.2.3")
     implementation("org.apache.poi:poi-ooxml:5.2.3")
 
+    // --- Apache POI (.xlsx) ---
+    implementation("org.apache.poi:poi:5.2.5")
+    implementation("org.apache.poi:poi-ooxml:5.2.5")
+
+// Dependencias que a veces NO se resuelven bien en Android:
+    implementation("org.apache.xmlbeans:xmlbeans:5.1.1")
+    implementation("org.apache.commons:commons-collections4:4.4")
+    implementation("commons-io:commons-io:2.11.0")
+    implementation("org.apache.commons:commons-compress:1.26.1")
+
+// --- Coroutines para Dispatchers.IO / Main ---
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+
+
     // Firebase Authentication y Firestore
     implementation("com.google.firebase:firebase-auth-ktx:23.2.1")
     implementation("com.google.firebase:firebase-firestore-ktx:25.1.4")
@@ -71,5 +85,10 @@ dependencies {
     implementation("com.google.accompanist:accompanist-systemuicontroller:0.34.0")
 
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
+
+
+
+    implementation("androidx.datastore:datastore-preferences:1.1.1")
+    implementation("io.coil-kt:coil-compose:2.6.0")
 
 }

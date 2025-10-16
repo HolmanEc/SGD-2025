@@ -2,6 +2,7 @@ package com.holman.sgd.resources.nominas
 
 import android.content.Context
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -23,6 +24,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -52,9 +54,12 @@ import org.apache.poi.ss.usermodel.DataFormatter
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
 import com.holman.sgd.ui.theme.*
 import com.google.firebase.firestore.DocumentReference
+import com.holman.sgd.resources.FondoScreenDefault
 import com.holman.sgd.resources.LoadingDotsOverlay
 import com.holman.sgd.resources.VistaPreviaTablaExcel
 import java.util.UUID
+
+
 @Composable
 fun CrearNomina(
     onBack: () -> Unit,
@@ -72,9 +77,12 @@ fun CrearNomina(
     var asignatura by remember { mutableStateOf("") }
     var especialidad by remember { mutableStateOf("") }
 
-    // ✅ Solo loader durante guardado
     var isSaving by remember { mutableStateOf(false) }
     val isBusy by remember { derivedStateOf { isSaving } }
+
+    BackHandler(enabled = true) {
+        if (!isBusy) onBack()
+    }
 
     val archivoLauncher = rememberLauncherForActivityResult(
         contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
@@ -82,17 +90,15 @@ fun CrearNomina(
         uri?.let { onCargarArchivo(it) }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(BackgroundDefault)
-    ) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        FondoScreenDefault()
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(16.dp)
-        ) {
-
+        )
+        {
             Box(
                 modifier = Modifier.fillMaxWidth(),
                 contentAlignment = Alignment.Center
@@ -102,9 +108,17 @@ fun CrearNomina(
                     style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
                 )
             }
+
             Spacer(modifier = Modifier.height(12.dp))
 
-            SelectorFirebase("Institución", "instituciones", institucion) { institucion = it }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(BackgroundDefault, shape = RoundedCornerShape(8.dp))
+            ) {
+                SelectorFirebase("Institución", "instituciones", institucion) { institucion = it }
+            }
+
             Spacer(modifier = Modifier.height(12.dp))
 
             Row(
@@ -114,18 +128,61 @@ fun CrearNomina(
                 Column(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    SelectorFirebase("Docente", "docentes", docente) { docente = it }
-                    SelectorFirebase("Curso", "cursos", curso) { curso = it }
-                    SelectorFirebase("Especialidad", "especialidades", especialidad) { especialidad = it }
+                )
+                {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(BackgroundDefault, shape = RoundedCornerShape(8.dp))
+                    ) {
+                        SelectorFirebase("Docente", "docentes", docente) { docente = it }
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(BackgroundDefault, shape = RoundedCornerShape(8.dp))
+                    ) {
+                        SelectorFirebase("Curso", "cursos", curso) { curso = it }
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(BackgroundDefault, shape = RoundedCornerShape(8.dp))
+                    ) {
+                        SelectorFirebase("Especialidad", "especialidades", especialidad) { especialidad = it }
+                    }
                 }
+
                 Column(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    SelectorFirebase("Asignatura", "asignaturas", asignatura) { asignatura = it }
-                    SelectorFirebase("Paralelo", "paralelos", paralelo) { paralelo = it }
-                    SelectorFirebase("Periodo Lectivo", "periodos", periodo) { periodo = it }
+                )
+                {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(BackgroundDefault, shape = RoundedCornerShape(8.dp))
+                    ) {
+                        SelectorFirebase("Asignatura", "asignaturas", asignatura) { asignatura = it }
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(BackgroundDefault, shape = RoundedCornerShape(8.dp))
+                    ) {
+                        SelectorFirebase("Paralelo", "paralelos", paralelo) { paralelo = it }
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(BackgroundDefault, shape = RoundedCornerShape(8.dp))
+                    ) {
+                        SelectorFirebase("Periodo Lectivo", "periodos", periodo) { periodo = it }
+                    }
                 }
             }
 
@@ -134,10 +191,10 @@ fun CrearNomina(
             Box(
                 modifier = Modifier
                     .weight(1f)
+                    .background(BackgroundDefault)
                     .fillMaxWidth()
             ) {
                 if (datos.isNotEmpty()) {
-                    // ---- Tabla real con scroll dentro del área reservada ----
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
@@ -203,11 +260,9 @@ fun CrearNomina(
                     }
                 }
             }
-            // ==================================================================
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Botones
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -254,7 +309,8 @@ fun CrearNomina(
                                     else -> {
                                         isSaving = true
                                         guardarNominaEnFirestore(
-                                            institucion, docente, curso, paralelo, asignatura, especialidad, periodo, datos,
+                                            institucion, docente, curso, paralelo,
+                                            asignatura, especialidad, periodo, datos,
                                             onSuccess = {
                                                 isSaving = false
                                                 mensajealert(context, "✅  Nómina guardada correctamente")
@@ -292,10 +348,11 @@ fun CrearNomina(
             }
         }
 
-        // Overlay de guardado
         LoadingDotsOverlay(isLoading = isSaving)
     }
 }
+
+
 
 fun guardarNominaEnFirestore(
     institucion: String,
@@ -404,26 +461,37 @@ fun guardarNominaEnFirestore(
 
 private fun inicializarCalificacionesParaNomina(
     nominaDocRef: DocumentReference,
-    datos: List<List<String>>,      // <- se conserva por compatibilidad, pero ya NO lo usamos para el ID
+    datos: List<List<String>>,      // se conserva por compatibilidad (no se usa para ID)
     insumosCount: Int,
     onDone: (Boolean) -> Unit
 ) {
-    // Leemos la tabla ya guardada, que tiene col1..col4
     nominaDocRef.get()
         .addOnSuccessListener { doc ->
-            val tabla = doc.get("tabla") as? List<Map<String, Any?>> ?: emptyList()
-            if (tabla.size <= 1) { onDone(false); return@addOnSuccessListener }
-            val cuerpo = tabla.drop(1)
+            // Cast seguro: List<*> -> Map<*, *> -> Map<String, Any?>
+            val tabla: List<Map<String, Any?>> =
+                (doc.get("tabla") as? List<*>)?.mapNotNull { item ->
+                    (item as? Map<*, *>)?.let { raw ->
+                        mapOf(
+                            "col1" to (raw["col1"] as? String),
+                            "col2" to (raw["col2"] as? String),
+                            "col3" to (raw["col3"] as? String),
+                            "col4" to (raw["col4"] as? String),
+                        )
+                    }
+                } ?: emptyList()
 
+            if (tabla.size <= 1) { onDone(false); return@addOnSuccessListener }
+
+            val cuerpo = tabla.drop(1)
             val batch = nominaDocRef.firestore.batch()
 
             cuerpo.forEachIndexed { index, fila ->
-                val id = (fila["col1"] as? String)?.trim().orEmpty()
+                val id  = (fila["col1"] as? String)?.trim().orEmpty()
                 val nro = (fila["col2"] as? String)?.trim().orEmpty()
                 val ced = (fila["col3"] as? String)?.trim().orEmpty()
                 val nom = (fila["col4"] as? String)?.trim().orEmpty()
 
-                if (id.isBlank()) return@forEachIndexed  // debería no pasar porque ya guardamos IDs
+                if (id.isBlank()) return@forEachIndexed
 
                 val docRef = nominaDocRef.collection("calificaciones").document(id)
                 val data = mapOf(
@@ -441,7 +509,13 @@ private fun inicializarCalificacionesParaNomina(
             }
 
             val cfgRef = nominaDocRef.collection("calificaciones").document("_config")
-            batch.set(cfgRef, mapOf("insumosCount" to insumosCount, "weights" to mapOf("formativa" to 0.7, "sumativa" to 0.3)))
+            batch.set(
+                cfgRef,
+                mapOf(
+                    "insumosCount" to insumosCount,
+                    "weights" to mapOf("formativa" to 0.7, "sumativa" to 0.3)
+                )
+            )
 
             batch.commit()
                 .addOnSuccessListener { onDone(true) }
@@ -466,7 +540,7 @@ fun SelectorFirebase(
     var expanded by remember { mutableStateOf(false) }
     var opciones by remember { mutableStateOf<List<String>>(emptyList()) }
 
-    // cargar de Firestore solo una vez
+    // cargar de Firestore solo una vez para la colección indicada
     LaunchedEffect(coleccion) {
         cargarListadoFirestore(coleccion) { opciones = it }
     }
@@ -492,7 +566,7 @@ fun SelectorFirebase(
             label = { Text(label) },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
             modifier = Modifier
-                .menuAnchor()
+                .menuAnchor(MenuAnchorType.PrimaryNotEditable, enabled = true)
                 .fillMaxWidth()
         )
 
