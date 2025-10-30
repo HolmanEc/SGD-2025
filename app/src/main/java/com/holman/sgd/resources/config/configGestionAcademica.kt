@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -28,6 +29,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -51,11 +53,14 @@ import androidx.compose.ui.window.Dialog
 import com.google.firebase.firestore.FirebaseFirestore
 import com.holman.sgd.resources.CustomButton
 import com.holman.sgd.resources.FondoScreenDefault
+import com.holman.sgd.resources.TituloScreenNominas
+import com.holman.sgd.resources.components.ContenedorPrincipal
 import com.holman.sgd.resources.mensajealert
 import com.holman.sgd.resources.screens.isTablet
 import com.holman.sgd.ui.theme.BackgroundDefault
 import com.holman.sgd.ui.theme.ButtonDarkGray
 import com.holman.sgd.ui.theme.ButtonDarkPrimary
+import com.holman.sgd.ui.theme.TextDefaultBlack
 
 data class AcademicItem(
     val id: String = "",
@@ -82,7 +87,7 @@ fun GestionAcademicaScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(16.dp)
+                .padding(ContenedorPrincipal),
         ) {
             Box(
                 modifier = Modifier
@@ -101,20 +106,11 @@ fun GestionAcademicaScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(16.dp)
+                            //.padding(16.dp)
                     ) {
                         // 🔹 Título superior
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text(
-                                text = "Gestión Académica",
-                                fontSize = 20.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(bottom = 16.dp)
-                            )
-                        }
+                        TituloScreenNominas(texto = "Gestión Académica")
+                        Spacer(modifier = Modifier.width(8.dp))
 
                         // 🔹 Carrusel de tarjetas (LazyRow)
                         val listState = rememberLazyListState()
@@ -125,8 +121,10 @@ fun GestionAcademicaScreen(
                             flingBehavior = flingBehavior,
                             horizontalArrangement = Arrangement.spacedBy(16.dp),
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 16.dp),
-                            modifier = Modifier.fillMaxSize()
-                        ) {
+                            modifier = Modifier
+                                .fillMaxSize()
+                        )
+                        {
                             item {
                                 Box(Modifier.fillParentMaxWidth()) {
                                     InputCard(Icons.Default.School, "Instituciones", "instituciones")
@@ -206,7 +204,7 @@ fun InputCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         elevation = CardDefaults.cardElevation(2.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFF8F9FA))
+        colors = CardDefaults.cardColors(containerColor = BackgroundDefault)
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
 
@@ -234,11 +232,24 @@ fun InputCard(
 
             OutlinedTextField(
                 value = texto,
-                onValueChange = { texto = it },
+                onValueChange = { input ->
+                    texto = if (coleccion.equals("paralelos", ignoreCase = true)) {
+                        // 🔹 Convierte automáticamente a mayúsculas al escribir
+                        input.uppercase()
+                            .filter { it.isLetter() || it.isWhitespace() } // (opcional) solo letras y espacios
+                    } else {
+                        input
+                    }
+                },
                 label = { Text(if (editingItem != null) "Editando..." else "Nuevo item") },
                 modifier = Modifier.fillMaxWidth(),
-                singleLine = true
+                singleLine = true,
+                textStyle = LocalTextStyle.current.copy(
+                    color = TextDefaultBlack,
+                    fontSize = 14.sp
+                )
             )
+
 
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -437,7 +448,7 @@ fun ItemRow(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = BackgroundDefault),
         elevation = CardDefaults.cardElevation(1.dp)
     ) {
         Row(
@@ -486,7 +497,8 @@ fun cargarItems(coleccion: String, onSuccess: (List<AcademicItem>) -> Unit) {
         .collection("gestionAcademica")
         .document("datosGenerales")
         .collection(coleccion)
-        .orderBy("timestamp", com.google.firebase.firestore.Query.Direction.DESCENDING)
+        // 🔹 Orden alfabético por Firestore (basado en "nombre")
+        .orderBy("nombre", com.google.firebase.firestore.Query.Direction.ASCENDING)
         .get()
         .addOnSuccessListener { documents ->
             val items = documents.map { doc ->
@@ -496,7 +508,8 @@ fun cargarItems(coleccion: String, onSuccess: (List<AcademicItem>) -> Unit) {
                     timestamp = doc.getLong("timestamp") ?: 0L
                 )
             }
-            onSuccess(items)
+            // 🔸 Seguridad extra: ordena de forma case-insensitive por si hay datos viejos
+            onSuccess(items.sortedBy { it.nombre.lowercase() })
         }
         .addOnFailureListener {
             onSuccess(emptyList())
@@ -504,10 +517,18 @@ fun cargarItems(coleccion: String, onSuccess: (List<AcademicItem>) -> Unit) {
 }
 
 fun crearItem(coleccion: String, nombre: String, onSuccess: () -> Unit) {
+    // 🔹 Normalización: para "paralelos" forzamos MAYÚSCULAS; resto queda como venga (trim)
+    val nombreFinal = if (coleccion.equals("paralelos", ignoreCase = true)) {
+        nombre.trim().uppercase()
+    } else {
+        nombre.trim()
+    }
+
     val data = mapOf(
-        "nombre" to nombre,
+        "nombre" to nombreFinal,
         "timestamp" to System.currentTimeMillis()
     )
+
     FirebaseFirestore.getInstance()
         .collection("gestionAcademica")
         .document("datosGenerales")
@@ -517,12 +538,18 @@ fun crearItem(coleccion: String, nombre: String, onSuccess: () -> Unit) {
 }
 
 fun editarItem(coleccion: String, id: String, nuevoNombre: String, onSuccess: () -> Unit) {
+    val nombreFinal = if (coleccion.equals("paralelos", ignoreCase = true)) {
+        nuevoNombre.trim().uppercase()
+    } else {
+        nuevoNombre.trim()
+    }
+
     FirebaseFirestore.getInstance()
         .collection("gestionAcademica")
         .document("datosGenerales")
         .collection(coleccion)
         .document(id)
-        .update("nombre", nuevoNombre)
+        .update("nombre", nombreFinal)
         .addOnSuccessListener { onSuccess() }
 }
 

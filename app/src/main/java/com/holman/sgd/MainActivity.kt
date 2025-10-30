@@ -48,6 +48,7 @@ import com.holman.sgd.resources.screens.*
 import com.holman.sgd.resources.nominas.*
 import com.holman.sgd.ui.theme.*
 import androidx.compose.material3.HorizontalDivider  // ← reemplaza Divider
+import androidx.core.view.WindowCompat
 
 // MAIN ACTIVITY
 class MainActivity : ComponentActivity() {
@@ -78,6 +79,10 @@ fun App() {
 
     val currentUser = rememberFirebaseUser()
 
+    val tablet = isTablet()
+    val titleText = if (tablet) "Sistema de Gestión Docente" else "SGD"
+
+
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
@@ -93,7 +98,7 @@ fun App() {
             containerColor = MaterialTheme.colorScheme.background,
             topBar = {
                 TopAppBar(
-                    title = { Text("Sistema de Gestión Docente", color = TextDefaultWhite) },
+                    title = { Text(titleText, color = TextDefaultWhite) },
                     navigationIcon = {
                         IconButton(onClick = { scope.launch { drawerState.open() } }) {
                             Icon(Icons.Default.Menu, contentDescription = "Menú", tint = TextDefaultWhite)

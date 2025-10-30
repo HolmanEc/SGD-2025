@@ -19,6 +19,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.holman.sgd.resources.components.ContenedorPrincipal
 import com.holman.sgd.resources.config.*
 import com.holman.sgd.ui.theme.BackgroundDefault
 
@@ -56,92 +57,89 @@ fun Configuracion() {
         showRespaldoScreen       -> RespaldoRestauracionScreen(onNavigateBack = { showRespaldoScreen = false })
         showSeguridadScreen      -> SeguridadScreen(onNavigateBack = { showSeguridadScreen = false })
         else -> {
-            Box(modifier = Modifier.fillMaxSize()) {
-
+            Box(modifier = Modifier
+                .fillMaxSize()
+            ) {
                 FondoScreenDefault()
 
-                // 🔹 Contenido principal encima del fondo
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 16.dp, vertical = 16.dp),
-                    contentPadding = PaddingValues(bottom = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                Column(modifier = Modifier
+                    .fillMaxSize()
+                    .padding(ContenedorPrincipal),
                 ) {
-                    item {
-                        Text(
-                            text = "Configuraciones",
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.Bold,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 8.dp)
-                        )
+                    TituloScreenNominas(texto = "Configuraciones")
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    // 🔹 Contenido principal encima del fondo
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize(),
+                        //contentPadding = PaddingValues(bottom = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        item {
+                            ConfigCard(
+                                icon = Icons.Default.Brush,
+                                titulo = "Apariencia",
+                                descripcion = "Cambia el tema de la app entre claro y oscuro",
+                                onClick = { showAparienciaScreen = true }
+                            )
+                        }
+
+                        item {
+                            ConfigCard(
+                                icon = Icons.Default.School,
+                                titulo = "Gestión Académica",
+                                descripcion = "Administra docentes, cursos, paralelos, asignaturas, especialidades y periodos",
+                                onClick = { showGestionScreen = true }
+                            )
+                        }
+
+                        item {
+                            ConfigCard(
+                                icon = Icons.Default.Event,
+                                titulo = "Calendario",
+                                descripcion = "Define días de clase y periodos académicos",
+                                onClick = { showCalendarioScreen = true }
+                            )
+                        }
+
+                        item {
+                            ConfigCard(
+                                icon = Icons.Default.Notifications,
+                                titulo = "Notificaciones",
+                                descripcion = "Configura recordatorios y alertas",
+                                onClick = { showNotificacionesScreen = true }
+                            )
+                        }
+
+                        item {
+                            ConfigCard(
+                                icon = Icons.Default.Backup,
+                                titulo = "Respaldo y Restauración",
+                                descripcion = "Exporta o importa los datos de la app",
+                                onClick = { showRespaldoScreen = true }
+                            )
+                        }
+
+                        item {
+                            ConfigCard(
+                                icon = Icons.Default.Lock,
+                                titulo = "Seguridad",
+                                descripcion = "Cambiar contraseña o activar bloqueo con huella",
+                                onClick = { showSeguridadScreen = true }
+                            )
+                        }
+
+                        item {
+                            ConfigCard(
+                                icon = Icons.Default.Info,
+                                titulo = "Acerca de la app",
+                                descripcion = "Información y versión de la aplicación",
+                                onClick = { showAboutScreen = true }
+                            )
+                        }
                     }
 
-                    item {
-                        ConfigCard(
-                            icon = Icons.Default.Brush,
-                            titulo = "Apariencia",
-                            descripcion = "Cambia el tema de la app entre claro y oscuro",
-                            onClick = { showAparienciaScreen = true }
-                        )
-                    }
-
-                    item {
-                        ConfigCard(
-                            icon = Icons.Default.School,
-                            titulo = "Gestión Académica",
-                            descripcion = "Administra docentes, cursos, paralelos, asignaturas, especialidades y periodos",
-                            onClick = { showGestionScreen = true }
-                        )
-                    }
-
-                    item {
-                        ConfigCard(
-                            icon = Icons.Default.Event,
-                            titulo = "Calendario",
-                            descripcion = "Define días de clase y periodos académicos",
-                            onClick = { showCalendarioScreen = true }
-                        )
-                    }
-
-                    item {
-                        ConfigCard(
-                            icon = Icons.Default.Notifications,
-                            titulo = "Notificaciones",
-                            descripcion = "Configura recordatorios y alertas",
-                            onClick = { showNotificacionesScreen = true }
-                        )
-                    }
-
-                    item {
-                        ConfigCard(
-                            icon = Icons.Default.Backup,
-                            titulo = "Respaldo y Restauración",
-                            descripcion = "Exporta o importa los datos de la app",
-                            onClick = { showRespaldoScreen = true }
-                        )
-                    }
-
-                    item {
-                        ConfigCard(
-                            icon = Icons.Default.Lock,
-                            titulo = "Seguridad",
-                            descripcion = "Cambiar contraseña o activar bloqueo con huella",
-                            onClick = { showSeguridadScreen = true }
-                        )
-                    }
-
-                    item {
-                        ConfigCard(
-                            icon = Icons.Default.Info,
-                            titulo = "Acerca de la app",
-                            descripcion = "Información y versión de la aplicación",
-                            onClick = { showAboutScreen = true }
-                        )
-                    }
                 }
             }
         }
@@ -162,7 +160,7 @@ fun ConfigCard(
             .clickable { onClick() },
         shape = RoundedCornerShape(12.dp),
         elevation = CardDefaults.cardElevation(4.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White)
+        colors = CardDefaults.cardColors(containerColor = BackgroundDefault)
     ) {
         Row(
             modifier = Modifier

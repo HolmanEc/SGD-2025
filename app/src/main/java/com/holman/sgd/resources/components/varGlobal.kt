@@ -1,9 +1,23 @@
 package com.holman.sgd.resources.components
 
-import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.ui.unit.dp
 import com.holman.sgd.R
 import com.holman.sgd.Screen
 import com.holman.sgd.ui.theme.*
+
+
+
+
+// Margen estándar reutilizable para tus contenedores
+val ContenedorPrincipal = PaddingValues(
+    start = 16.dp,   // Margen izquierdo
+    end = 16.dp,     // Margen derecho
+    top = 24.dp,     // Margen superior
+    bottom = 24.dp   // Margen inferior
+)
+
+
 
 fun getColorsCardsInicio() = listOf(
     Card1,

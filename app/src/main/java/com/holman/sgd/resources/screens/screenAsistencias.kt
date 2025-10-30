@@ -1,33 +1,48 @@
 package com.holman.sgd.resources
 
 import android.annotation.SuppressLint
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.*
+import androidx.compose.material3.AlertDialogDefaults.shape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.zIndex
 import androidx.navigation.NavHostController
 import com.google.firebase.firestore.FirebaseFirestore
 import com.holman.sgd.R
+import com.holman.sgd.resources.components.ContenedorPrincipal
 import com.holman.sgd.resources.components.getColorsCardsInicio
 import com.holman.sgd.ui.theme.BackgroundDefault
 import com.holman.sgd.ui.theme.ButtonDarkGray
@@ -148,12 +163,13 @@ fun Asistencias(navController: NavHostController) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(16.dp)
+                    .padding(ContenedorPrincipal)
             ) {
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .fillMaxWidth(),
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     when {
@@ -163,26 +179,19 @@ fun Asistencias(navController: NavHostController) {
                             color = MaterialTheme.colorScheme.error,
                             textAlign = TextAlign.Center
                         )
-                        nominas.isEmpty() -> Text(
-                            "📋 No hay nóminas guardadas.",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Medium,
-                            textAlign = TextAlign.Center
-                        )
+                        nominas.isEmpty() -> Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            TituloScreenNominas(texto = "No hay nóminas Guardadas")
+                        }
                         else -> {
                             Column(
                                 modifier = Modifier.fillMaxSize(),
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
-                                Text(
-                                    text = "📋 Nóminas para Asistencia",
-                                    fontSize = 24.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    textAlign = TextAlign.Center,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 16.dp)
-                                )
+                                TituloScreenNominas(texto = "Nóminas Guardadas")
+                                Spacer(modifier = Modifier.width(8.dp))
 
                                 LazyColumn(
                                     modifier = Modifier.fillMaxSize(),
@@ -190,7 +199,7 @@ fun Asistencias(navController: NavHostController) {
                                     contentPadding = PaddingValues(bottom = 80.dp)
                                 ) {
                                     itemsIndexed(nominas) { index, nomina ->
-                                        NominaCard(
+                                        NominaCardAsistencias(
                                             nomina = nomina,
                                             index = index,
                                             onClick = { colorSeleccionado ->
@@ -238,22 +247,27 @@ fun Asistencias(navController: NavHostController) {
                     }
                 }
 
-                // Volver al home (solo en lista)
-                CustomButton(
-                    text = "Volver",
-                    borderColor = ButtonDarkGray,
-                    onClick = { navController.popBackStack() }
-                )
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CustomButton(
+                        text = "Volver",
+                        borderColor = ButtonDarkGray,
+                        onClick = { navController.popBackStack()}
+                    )
+                }
             }
 
-            // 🔸 Overlay combinado:
-            // - isLoading: carga inicial de la lista (lo que ya tenías)
-            // - isOpeningDetail: prefetch al abrir detalle
             LoadingDotsOverlay(isLoading = isLoading || isOpeningDetail)
         }
     }
 }
 
+///
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SelectorFecha(fecha: String, onFechaSeleccionada: (String) -> Unit) {
@@ -263,45 +277,148 @@ fun SelectorFecha(fecha: String, onFechaSeleccionada: (String) -> Unit) {
         value = fecha,
         onValueChange = {},
         readOnly = true,
-        label = { Text("Fecha") },
+        label = { Text("Fecha", color = TextDefaultBlack) },
+        textStyle = LocalTextStyle.current.copy(color = TextDefaultBlack),
         trailingIcon = {
             IconButton(onClick = { showDialog = true }) {
-                Icon(Icons.Default.DateRange, contentDescription = "Seleccionar fecha")
+                Icon(
+                    imageVector = Icons.Default.DateRange,
+                    contentDescription = "Seleccionar fecha",
+                    tint = TextDefaultBlack
+                )
             }
         },
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(BackgroundDefault),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedContainerColor = BackgroundDefault,
+            unfocusedContainerColor = BackgroundDefault,
+            disabledContainerColor = BackgroundDefault,
+            focusedBorderColor = TextDefaultBlack,
+            unfocusedBorderColor = TextDefaultBlack.copy(alpha = 0.6f),
+            cursorColor = TextDefaultBlack
+        )
     )
 
     if (showDialog) {
         val hoy = LocalDate.now()
-        val millisHoy = hoy.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
-        val state = rememberDatePickerState(initialSelectedDateMillis = millisHoy,
+        // ✅ 1) Inicializa en UTC (evita off-by-one)
+        val millisHoy = hoy.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+
+        val state = rememberDatePickerState(
+            initialSelectedDateMillis = millisHoy,
             selectableDates = object : SelectableDates {
                 override fun isSelectableDate(utcTimeMillis: Long): Boolean {
-                    val dayOfWeek = Instant.ofEpochMilli(utcTimeMillis).atZone(ZoneOffset.UTC).dayOfWeek
+                    // ✅ 2) Evalúa el día en UTC (coherente con el DatePicker)
+                    val dayOfWeek = Instant.ofEpochMilli(utcTimeMillis)
+                        .atZone(ZoneOffset.UTC).dayOfWeek
                     return dayOfWeek.value in 1..5
                 }
-            })
-
-        DatePickerDialog(
-            onDismissRequest = { showDialog = false },
-            confirmButton = {
-                TextButton(onClick = {
-                    state.selectedDateMillis?.let { millis ->
-                        val localDate = Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate()
-                        val nuevaFecha = "%04d-%02d-%02d".format(localDate.year, localDate.monthValue, localDate.dayOfMonth)
-                        onFechaSeleccionada(nuevaFecha)
-                    }
-                    showDialog = false
-                }) { Text("Aceptar") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDialog = false }) { Text("Cancelar") }
             }
-        ) { DatePicker(state = state, showModeToggle = true) }
+        )
+
+        Dialog(
+            onDismissRequest = { showDialog = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        )
+        {
+            Box(
+                modifier = Modifier
+                    .shadow(
+                        elevation = 4.dp,
+                        shape = RoundedCornerShape(16.dp),
+                        clip = false
+                    )
+                    .clip(RoundedCornerShape(16.dp))
+            ){
+                // 🔹 Densidad compacta (igual que antes)
+                val density = LocalDensity.current
+                CompositionLocalProvider(
+                    LocalDensity provides Density(
+                        density = density.density * 0.85f,
+                        fontScale = density.fontScale * 0.95f
+                    )
+                ) {
+                    Surface(
+                        color = BackgroundDefault,
+                        modifier = Modifier
+                            .widthIn(max = 420.dp)
+                            .wrapContentHeight()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Box(
+                                modifier = Modifier.fillMaxWidth(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                DatePicker(
+                                    state = state,
+                                    showModeToggle = true,
+                                    modifier = Modifier.widthIn(max = 400.dp),
+                                    colors = DatePickerDefaults.colors(
+                                        containerColor = BackgroundDefault,
+                                        titleContentColor = TextDefaultBlack,
+                                        headlineContentColor = TextDefaultBlack,
+                                        weekdayContentColor = TextDefaultBlack.copy(alpha = 0.7f),
+                                        subheadContentColor = TextDefaultBlack,
+                                        navigationContentColor = TextDefaultBlack
+                                    )
+                                )
+                            }
+
+                            Divider(
+                                modifier = Modifier.fillMaxWidth(),
+                                thickness = 1.dp,
+                                color = TextDefaultBlack.copy(alpha = 0.25f)
+                            )
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(end = 16.dp, top = 8.dp, bottom = 4.dp),
+                                horizontalArrangement = Arrangement.End
+                            ) {
+                                FilledTonalIconButton(
+                                    onClick = { showDialog = false },
+                                    shape = CircleShape
+                                ) {
+                                    Icon(Icons.Default.Close, contentDescription = "Cerrar")
+                                }
+
+                                Spacer(Modifier.width(16.dp))
+
+                                FilledTonalIconButton(
+                                    onClick = {
+                                        state.selectedDateMillis?.let { millis ->
+                                            // ✅ 3) Lee la fecha en UTC (evita día -1)
+                                            val localDate = Instant.ofEpochMilli(millis)
+                                                .atZone(ZoneOffset.UTC)
+                                                .toLocalDate()
+                                            val nuevaFecha = "%04d-%02d-%02d".format(
+                                                localDate.year, localDate.monthValue, localDate.dayOfMonth
+                                            )
+                                            onFechaSeleccionada(nuevaFecha)
+                                        }
+                                        showDialog = false
+                                    },
+                                    shape = CircleShape
+                                ) {
+                                    Icon(Icons.Default.Check, contentDescription = "Aceptar")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
+///
+/////////////////
 @OptIn(ExperimentalMaterial3Api::class)
 @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
 @Composable
@@ -323,8 +440,6 @@ fun ScreenNominaDetalleAsistencia(
     var isSaving by remember { mutableStateOf(false) }
 
     val isBusy by remember { derivedStateOf { isLoading || isSaving } }
-
-    // Baseline (por fecha): snapshot inmutable de asistencia actual (idUnico -> presente)
     var baseline by remember { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
 
     fun snapshotActual(): Map<String, Boolean> =
@@ -360,7 +475,7 @@ fun ScreenNominaDetalleAsistencia(
         )
     }
 
-    // ✅ Si llega data precargada, úsala y evita el loading inicial
+    // Data precargada
     LaunchedEffect(Unit) {
         if (initialAlumnos != null) {
             alumnos.clear()
@@ -370,7 +485,7 @@ fun ScreenNominaDetalleAsistencia(
         }
     }
 
-    // Cargar alumnos + asistencia inicial SOLO si no hubo prefetch
+    // Carga inicial
     LaunchedEffect(nomina.id) {
         if (skipInitialLoad) return@LaunchedEffect
         isLoading = true
@@ -379,7 +494,6 @@ fun ScreenNominaDetalleAsistencia(
             onSuccess = { lista ->
                 alumnos.clear()
                 alumnos.addAll(lista)
-
                 cargarAsistenciaExistente(
                     nominaId = nomina.id,
                     fecha = fecha,
@@ -402,7 +516,7 @@ fun ScreenNominaDetalleAsistencia(
         )
     }
 
-    // Re-cargar/aplicar asistencia al cambiar la fecha y re-sellar baseline
+    // Al cambiar la fecha
     LaunchedEffect(fecha) {
         if (alumnos.isNotEmpty()) {
             cargarAsistenciaExistente(
@@ -420,18 +534,16 @@ fun ScreenNominaDetalleAsistencia(
         }
     }
 
-    // Registrar en el PADRE el handler para el Back del sistema
+    // Back
     LaunchedEffect(nomina.id, alumnos, baseline, isBusy, fecha) {
         onRegisterBackRequest {
             if (!isBusy && hayCambios()) {
                 saveIfDirty(showToast = false) { onBack() }
-            } else {
-                onBack()
-            }
+            } else onBack()
         }
     }
 
-    // Autosave best-effort en background/cierre
+    // Autosave onStop
     DisposableEffect(lifecycleOwner, alumnos, baseline, fecha) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
@@ -450,112 +562,147 @@ fun ScreenNominaDetalleAsistencia(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    Scaffold(
-        containerColor = BackgroundDefault,
-        floatingActionButton = {
-            FloatingSaveButton(
-                visible = !isBusy,
-                onClick = { saveIfDirty(showToast = true) },
-                modifier = Modifier.offset(x = (-4).dp, y = 2.dp),
-            )
-        }
-    ) { _ ->
+    Scaffold(containerColor = BackgroundDefault) { _ ->
         Box(modifier = Modifier.fillMaxSize()) {
+            FondoScreenDefault()
+
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 16.dp, vertical = 16.dp)
+                    .padding(ContenedorPrincipal),
+                verticalArrangement = Arrangement.SpaceBetween
             ) {
+                // Encabezado + selector
                 Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .wrapContentHeight()
                 ) {
-                    CustomButton(
-                        text = "Volver a nóminas",
-                        borderColor = ButtonDarkGray,
-                        onClick = {
-                            if (!isBusy && hayCambios()) {
-                                saveIfDirty(showToast = false) { onBack() }
-                            } else {
-                                onBack()
-                            }
-                        }
+                    NominaHeaderCard(
+                        nomina = nomina,
+                        backgroundColor = headerColor,
+                        onClick = null
                     )
+
+                    Spacer(Modifier.height(12.dp))
+
+                    SelectorFecha(
+                        fecha = fecha,
+                        onFechaSeleccionada = { nuevaFecha -> fecha = nuevaFecha }
+                    )
+
+                    Spacer(Modifier.height(16.dp))
                 }
 
-                Spacer(Modifier.height(16.dp))
-
-                NominaHeaderCard(
-                    nomina = nomina,
-                    backgroundColor = headerColor,
-                    onClick = null
-                )
-
-                Spacer(Modifier.height(12.dp))
-
-                SelectorFecha(
-                    fecha = fecha,
-                    onFechaSeleccionada = { nuevaFecha -> fecha = nuevaFecha }
-                )
-
-                Spacer(Modifier.height(16.dp))
-
-                when {
-                    isLoading -> {
-                        Spacer(Modifier.size(1.dp))
-                    }
-                    alumnos.isEmpty() -> {
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("No hay alumnos registrados", fontSize = 16.sp, color = TextDefaultBlack)
+                // LISTA SCROLLEABLE + FAB superpuesto SOLO a esta sección
+                Box(
+                    modifier = Modifier
+                        .weight(1f)              // ocupa el alto disponible entre header y botón inferior
+                        .fillMaxWidth()
+                ) {
+                    when {
+                        isLoading -> {
+                            // Mantén layout estable
+                            LazyColumn(
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                contentPadding = PaddingValues(bottom = 4.dp)
+                            ) { }
                         }
-                    }
-                    else -> {
-                        LazyColumn(
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                            contentPadding = PaddingValues(bottom = 8.dp)
-                        ) {
-                            items(alumnos) { estudiante ->
-                                Card(
-                                    shape = RoundedCornerShape(8.dp),
-                                    elevation = CardDefaults.cardElevation(2.dp),
-                                    modifier = Modifier.fillMaxWidth()
+                        alumnos.isEmpty() -> {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    "No hay alumnos registrados",
+                                    fontSize = 16.sp,
+                                    color = TextDefaultBlack
+                                )
+                            }
+                        }
+                        else -> {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                            ) {
+                                LazyColumn(
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                    contentPadding = PaddingValues(bottom = 4.dp) // para no tapar con el botón inferior
                                 ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(12.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Checkbox(
-                                            checked = estudiante.presente,
-                                            onCheckedChange = { nuevoValor ->
-                                                val index = alumnos.indexOf(estudiante)
-                                                if (index != -1) {
-                                                    alumnos[index] = estudiante.copy(presente = nuevoValor)
-                                                }
-                                            },
-                                            colors = CheckboxDefaults.colors(
-                                                checkedColor = ButtonDarkSuccess,
-                                                uncheckedColor = ButtonDarkGray
-                                            )
-                                        )
-                                        Spacer(Modifier.width(12.dp))
-                                        Text("${estudiante.numero}. ${estudiante.nombre}", fontSize = 16.sp)
+                                    items(alumnos) { estudiante ->
+                                        Card(
+                                            shape = RoundedCornerShape(8.dp),
+                                            elevation = CardDefaults.cardElevation(2.dp),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .background(BackgroundDefault) // Fondo bajo la tarjeta
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .background(BackgroundDefault) // Fondo de cada fila
+                                                    .padding(2.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Checkbox(
+                                                    checked = estudiante.presente,
+                                                    onCheckedChange = { nuevoValor ->
+                                                        val index = alumnos.indexOf(estudiante)
+                                                        if (index != -1) {
+                                                            alumnos[index] = estudiante.copy(presente = nuevoValor)
+                                                        }
+                                                    },
+                                                    colors = CheckboxDefaults.colors(
+                                                        checkedColor = ButtonDarkSuccess,
+                                                        uncheckedColor = TextDefaultBlack
+                                                    )
+                                                )
+                                                Spacer(Modifier.width(12.dp))
+                                                Text(
+                                                    text = "${estudiante.numero}. ${estudiante.nombre}",
+                                                    fontSize = 16.sp,
+                                                    color = TextDefaultBlack
+                                                )
+                                            }
+                                        }
                                     }
+                                }
+
+                                if (!isBusy) {
+                                    FloatingSaveButton(
+                                        visible = true,
+                                        onClick = { saveIfDirty(showToast = true) },
+                                        modifier = Modifier
+                                            .align(Alignment.CenterEnd)
+                                            .zIndex(1f)
+                                    )
                                 }
                             }
                         }
                     }
                 }
+
+                Spacer(Modifier.height(16.dp))
+
+                // Botón inferior fijo
+                CustomButton(
+                    text = "Volver a nóminas",
+                    borderColor = ButtonDarkGray,
+                    onClick = {
+                        if (!isBusy && hayCambios()) {
+                            saveIfDirty(showToast = false) { onBack() }
+                        } else onBack()
+                    }
+                )
             }
 
             LoadingDotsOverlay(isLoading = isBusy)
         }
     }
 }
+
+
+////
 
 fun cargarAsistenciaExistente(
     nominaId: String,

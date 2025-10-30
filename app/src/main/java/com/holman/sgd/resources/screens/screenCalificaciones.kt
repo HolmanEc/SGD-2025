@@ -27,6 +27,8 @@ import android.content.ContentValues
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.holman.sgd.resources.components.ContenedorPrincipal
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
@@ -45,10 +47,10 @@ fun Calificaciones(navController: NavHostController) {
     var selectedNomina by remember { mutableStateOf<NominaResumen?>(null) }
     var selectedNominaColor by remember { mutableStateOf<Color?>(null) }
 
-    // 🔹 El hijo nos registrará aquí su "onBackRequest" (guardar si cambió y luego volver)
-    var detalleOnBackRequest by remember { mutableStateOf<(() -> Unit)?>(null) }
+    // ⬇️ NUEVO: estado controlado por nómina (id → TerminoEval)
+    val terminosElegidos = remember { mutableStateMapOf<String, TerminoEval>() }
 
-    // 🔹 Prefetch antes de abrir el detalle
+    var detalleOnBackRequest by remember { mutableStateOf<(() -> Unit)?>(null) }
     var isOpeningDetail by remember { mutableStateOf(false) }
     var prefetchEstudiantes by remember { mutableStateOf<List<TablaConfig.EstudianteCalificacion>?>(null) }
 
@@ -65,7 +67,6 @@ fun Calificaciones(navController: NavHostController) {
         )
     }
 
-    // 🔙 Back del sistema
     androidx.activity.compose.BackHandler(enabled = true) {
         if (selectedNomina == null) {
             navController.popBackStack()
@@ -79,77 +80,74 @@ fun Calificaciones(navController: NavHostController) {
     }
 
     if (selectedNomina != null) {
+        // ⬇️ Al abrir detalle, usamos el término guardado de esa nómina (por defecto T1)
+        val initialTermino = terminosElegidos[selectedNomina!!.id] ?: TerminoEval.T1
+
         ScreenNominaDetalleCalificaciones(
             nomina = selectedNomina!!,
             headerColor = selectedNominaColor ?: EncabezadoEnDetalleNominas,
-            // El hijo llama esto CUANDO YA guardó (si había cambios) y está listo para salir:
             onBack = {
                 selectedNomina = null
                 selectedNominaColor = null
                 detalleOnBackRequest = null
                 prefetchEstudiantes = null
             },
-            // El hijo nos REGISTRA su "onBackRequest": guardar-si-dirty y luego onBack()
             onRegisterBackRequest = { handler -> detalleOnBackRequest = handler },
-            // ✅ datos precargados para entrar “ya listo”
             initialEstudiantes = prefetchEstudiantes,
-            skipInitialLoad = prefetchEstudiantes != null
+            skipInitialLoad = prefetchEstudiantes != null,
+            // ⬇️ NUEVO: pasa el término inicial
+            initialTermino = initialTermino
         )
     } else {
         Box(modifier = Modifier.fillMaxSize()) {
             FondoScreenDefault()
-
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(16.dp)
+                    .padding(ContenedorPrincipal)
             ) {
                 Box(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth(),
+                        //.padding(horizontal = 16.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     when {
-                        isLoading -> Spacer(Modifier.size(1.dp)) // overlay cubre
-                        error != null -> Text(
-                            "❌ Error: $error",
-                            color = MaterialTheme.colorScheme.error
-                        )
-                        nominas.isEmpty() -> Text(
-                            "📋 No hay nóminas guardadas.",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Medium
-                        )
+                        isLoading -> Spacer(Modifier.size(1.dp))
+                        error != null -> Text("❌ Error: $error", color = MaterialTheme.colorScheme.error)
+                        nominas.isEmpty() ->Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            TituloScreenNominas(texto = "No hay nóminas Guardadas")
+                        }
                         else -> {
                             Column(
                                 modifier = Modifier.fillMaxSize(),
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
-                                Text(
-                                    text = "📊 Nóminas para Calificaciones",
-                                    fontSize = 24.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 16.dp),
-                                    textAlign = TextAlign.Center
-                                )
+                                TituloScreenNominas(texto = "Nóminas Guardadas")
+                                Spacer(modifier = Modifier.width(8.dp))
 
                                 LazyColumn(
                                     modifier = Modifier.fillMaxSize(),
                                     verticalArrangement = Arrangement.spacedBy(12.dp),
-                                    contentPadding = PaddingValues(bottom = 80.dp)
                                 ) {
                                     itemsIndexed(nominas) { index, nomina ->
-                                        NominaCard(
+                                        NominaCardCalificaciones(
                                             nomina = nomina,
                                             index = index,
+                                            // ⬇️ Clic de la card: se abre con el término seleccionado para esa nómina
                                             onClick = { colorSeleccionado: Color ->
-                                                // 🔹 PREFETCH: mantenemos la lista visible hasta cargar todo
                                                 isOpeningDetail = true
-                                                cargarCalificacionesDesdeFirestore(
+
+                                                // usa el término elegido para ESA nómina (o T1 por defecto)
+                                                val terminoElegido = terminosElegidos[nomina.id] ?: TerminoEval.T1
+
+                                                cargarDatosDesdeFirestore(
                                                     nominaId = nomina.id,
+                                                    termino  = terminoElegido,          // 👈 FALTABA
                                                     onSuccess = { lista ->
                                                         prefetchEstudiantes = lista
                                                         selectedNomina = nomina
@@ -161,6 +159,11 @@ fun Calificaciones(navController: NavHostController) {
                                                         mensajealert(context, "❌ $msg")
                                                     }
                                                 )
+                                            },
+                                            // ⬇️ Hacemos el selector controlado por nómina
+                                            termSelected = terminosElegidos[nomina.id] ?: TerminoEval.T1,
+                                            onTermChange = { nuevo ->
+                                                terminosElegidos[nomina.id] = nuevo
                                             }
                                         )
                                     }
@@ -170,16 +173,21 @@ fun Calificaciones(navController: NavHostController) {
                     }
                 }
 
-                CustomButton(
-                    text = "Volver",
-                    borderColor = ButtonDarkGray,
-                    onClick = { navController.popBackStack() }
-                )
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CustomButton(
+                        text = "Volver",
+                        borderColor = ButtonDarkGray,
+                        onClick = { navController.popBackStack()}
+                    )
+                }
             }
 
-            // 🔸 Overlay combinado:
-            // - isLoading: carga inicial de la lista (lo que ya tenías)
-            // - isOpeningDetail: prefetch al abrir detalle
             LoadingDotsOverlay(isLoading = isLoading || isOpeningDetail)
         }
     }
@@ -194,24 +202,33 @@ fun ScreenNominaDetalleCalificaciones(
     onBack: () -> Unit,
     onRegisterBackRequest: ((() -> Unit) -> Unit),
     initialEstudiantes: List<TablaConfig.EstudianteCalificacion>? = null,
-    skipInitialLoad: Boolean = false
+    skipInitialLoad: Boolean = false,
+    // Término con el que entras al detalle (T1/T2/T3/INF)
+    initialTermino: TerminoEval = TerminoEval.T1
 ) {
     val context = LocalContext.current
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
 
+    // ---- Estados base ----
     var isLoading by remember { mutableStateOf(true) }
     var estudiantes by remember { mutableStateOf<List<TablaConfig.EstudianteCalificacion>>(emptyList()) }
-    var isSaving by remember { mutableStateOf(false) } // overlay durante guardado
+    var isSaving by remember { mutableStateOf(false) }
     val isBusy by remember { derivedStateOf { isLoading || isSaving } }
 
-    // Baseline: snapshot inmutable de notas al cargar/recargar
+    // ⬇️ término visible en el detalle (por si luego quieres mostrar selector aquí)
+    var termino by rememberSaveable { mutableStateOf(initialTermino) }
+
+    // Para detectar cambios
     var baseline by remember { mutableStateOf<Map<String, List<Double?>>>(emptyMap()) }
 
+    // ---- Helpers de comparación ----
     fun eqNota(a: Double?, b: Double?, eps: Double = 1e-6) =
         if (a == null && b == null) true else if (a == null || b == null) false else kotlin.math.abs(a - b) < eps
 
     fun notasCambiaron(actual: List<Double?>, anterior: List<Double?>): Boolean {
-        val editableCols = TablaConfig.INSUMOS_COUNT + 4 // INSUMOS + PROYECTO + EVAL + REFUERZO + MEJORA
+        // Para TRIMESTRE: 10 formativas + 4 sumativas editables = 14
+        // Para INFORME: solo SUPLETORIO es editable (pero por simplicidad dejamos 14; no rompe)
+        val editableCols = TablaConfig.INSUMOS_COUNT + 4
         val base = anterior.take(editableCols)
         val now  = actual.take(editableCols)
         if (base.size != now.size) return true
@@ -226,6 +243,7 @@ fun ScreenNominaDetalleCalificaciones(
 
     fun tieneCambiosPendientes(): Boolean = estudiantesModificados().isNotEmpty()
 
+    // ---- Guardar ----
     fun saveIfDirty(showToast: Boolean, onDone: () -> Unit = {}) {
         val cambios = estudiantesModificados()
         if (cambios.isEmpty()) {
@@ -233,24 +251,28 @@ fun ScreenNominaDetalleCalificaciones(
             onDone(); return
         }
         isSaving = true
-        guardarCalificacionesEnFirestore(
+        guardarDatosEnFirestore(
             nominaId = nomina.id,
+            termino = termino,                     // 👈 usa el término
             estudiantes = cambios
         ) {
-            baseline = estudiantes.associate { e -> e.idUnico to e.notas.map { v -> v } }
+            baseline = estudiantes.associate { e -> e.idUnico to e.notas.map { it } }
             isSaving = false
             if (showToast) mensajealert(context, "✅  Calificaciones guardadas.")
             onDone()
         }
     }
 
+
+    // ---- Recargar ----
     fun refresh(fromSave: Boolean) {
         if (!fromSave) isLoading = true
-        cargarCalificacionesDesdeFirestore(
+        cargarDatosDesdeFirestore(
             nominaId = nomina.id,
+            termino = termino,                    // 👈 usa el término
             onSuccess = { lista ->
                 estudiantes = lista
-                baseline = lista.associate { e -> e.idUnico to e.notas.map { v -> v } }
+                baseline = lista.associate { e -> e.idUnico to e.notas.map { it } }
                 if (fromSave) {
                     isSaving = false
                     mensajealert(context, "✅  Calificaciones guardadas.")
@@ -271,22 +293,22 @@ fun ScreenNominaDetalleCalificaciones(
         )
     }
 
-    // ✅ Si llega data precargada, úsala y evita el loading inicial
+    // ---- Carga inicial (con prefetch) ----
     LaunchedEffect(Unit) {
         if (initialEstudiantes != null) {
             estudiantes = initialEstudiantes
-            baseline = initialEstudiantes.associate { e -> e.idUnico to e.notas.map { v -> v } }
+            baseline = initialEstudiantes.associate { e -> e.idUnico to e.notas.map { it } }
             isLoading = false
         }
     }
 
-    // Carga inicial SOLO si no hubo prefetch
+    // ---- Carga desde backend si no vino prefetch ----
     LaunchedEffect(nomina.id) {
         if (skipInitialLoad) return@LaunchedEffect
         refresh(fromSave = false)
     }
 
-    // Back del sistema registrado en el padre
+    // ---- Integración con back físico: guarda si hay cambios ----
     LaunchedEffect(nomina.id, estudiantes, baseline, isBusy) {
         onRegisterBackRequest {
             if (!isBusy && tieneCambiosPendientes()) {
@@ -297,15 +319,17 @@ fun ScreenNominaDetalleCalificaciones(
         }
     }
 
-    // Autosave best-effort al ir a background/cierre
+    // ---- Guardado silencioso al background ----
     DisposableEffect(lifecycleOwner, estudiantes, baseline) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
                 val cambios = estudiantesModificados()
                 if (cambios.isNotEmpty()) {
-                    guardarCalificacionesEnFirestore(nominaId = nomina.id, estudiantes = cambios) {
-                        // silencioso
-                    }
+                    guardarDatosEnFirestore(
+                        nominaId = nomina.id,
+                        termino  = termino,              // 👈 FALTABA
+                        estudiantes = cambios
+                    ) { /* silencioso */ }
                 }
             }
         }
@@ -313,45 +337,19 @@ fun ScreenNominaDetalleCalificaciones(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    Scaffold(
-        containerColor = BackgroundDefault,
-        floatingActionButton = {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                horizontalAlignment = Alignment.End,
-                modifier = Modifier.offset(x = (-8).dp, y = 8.dp)
-            ) {
-                FloatingExportButton(
-                    visible = !isBusy,
-                    onClick = {}
-                )
-                FloatingSaveButton(
-                    visible = !isBusy,
-                    onClick = { saveIfDirty(showToast = true) }
-                )
-            }
-        }
-    ) {
+
+    // ---- UI ----
+    Scaffold(containerColor = BackgroundDefault) {
+        FondoScreenDefault()
+
         Box(modifier = Modifier.fillMaxSize()) {
             Column(
                 Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 16.dp, vertical = 16.dp),
+                    .padding(ContenedorPrincipal),
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
-                CustomButton(
-                    text = "Volver a nóminas",
-                    borderColor = ButtonDarkGray,
-                    onClick = {
-                        if (!isBusy && tieneCambiosPendientes()) {
-                            saveIfDirty(showToast = false) { onBack() }
-                        } else {
-                            onBack()
-                        }
-                    }
-                )
-                Spacer(Modifier.height(8.dp))
-
+                // ---- CONTENIDO PRINCIPAL ----
                 Column(
                     Modifier
                         .fillMaxWidth()
@@ -361,6 +359,7 @@ fun ScreenNominaDetalleCalificaciones(
                     NominaHeaderCard(
                         nomina = nomina,
                         backgroundColor = headerColor,
+                        termino = termino,
                         onClick = null
                     )
 
@@ -370,13 +369,57 @@ fun ScreenNominaDetalleCalificaciones(
                         isLoading -> Spacer(Modifier.size(1.dp))
                         else -> {
                             val colores = TablaColors.fromNomina(headerColor)
-                            TablaCalificaciones(
-                                estudiantes = estudiantes,
-                                nominaId = nomina.id,
-                                onRefresh = { refresh(fromSave = false) },
-                                colores = colores
-                            )
+
+                            // ⬇️ Elige qué tabla mostrar según 'termino'
+                            when (termino) {
+                                TerminoEval.INF -> {
+                                    TablaInforme(
+                                        estudiantes = estudiantes,
+                                        nominaId = nomina.id,
+                                        onRefresh = { refresh(fromSave = false) },
+                                        colores = colores
+                                    )
+                                }
+                                TerminoEval.T1, TerminoEval.T2, TerminoEval.T3 -> {
+                                    TablaTrimetre(
+                                        estudiantes = estudiantes,
+                                        nominaId = nomina.id,
+                                        onRefresh = { refresh(fromSave = false) },
+                                        colores = colores
+                                    )
+                                }
+                            }
                         }
+                    }
+                }
+
+                Spacer(Modifier.height(16.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Box(modifier = Modifier.weight(1f)) {
+                        CustomButton(
+                            text = if (isSaving) "Guardando…" else "Guardar",
+                            borderColor = ButtonDarkPrimary,
+                            onClick = {
+                                if (!isBusy) saveIfDirty(showToast = true)
+                            }
+                        )
+                    }
+                    Box(modifier = Modifier.weight(1f)) {
+                        CustomButton(
+                            text = "Volver a nóminas",
+                            borderColor = ButtonDarkGray,
+                            onClick = {
+                                if (!isBusy && tieneCambiosPendientes()) {
+                                    saveIfDirty(showToast = false) { onBack() }
+                                } else {
+                                    onBack()
+                                }
+                            }
+                        )
                     }
                 }
             }
@@ -388,196 +431,17 @@ fun ScreenNominaDetalleCalificaciones(
     }
 }
 
-fun exportCalificacionesXlsxToDownloads(
-    context: Context,
-    nominaId: String,
-    estudiantes: List<TablaConfig.EstudianteCalificacion>,
-    insumosCount: Int
-) {
-    if (estudiantes.isEmpty()) {
-        mensajealert(context, "ℹ️ No hay datos para exportar.")
-        return
-    }
 
-    try {
-        // ---------- 1) Construir el workbook .xlsx en memoria ----------
-        val wb = XSSFWorkbook()
-        val sheet = wb.createSheet("Calificaciones")
-
-        // Estilo de encabezado
-        val headerStyle = wb.createCellStyle().apply {
-            fillForegroundColor = IndexedColors.GREY_25_PERCENT.index
-            fillPattern = FillPatternType.SOLID_FOREGROUND
-        }
-
-        // Headers
-        val headersGrupo1 = listOf("ID", "ESTUDIANTE")
-        val headersFormativa = (1..insumosCount).map { "ACTIVIDAD $it" } + "FORMATIVA"
-        val headersSumativa = listOf("PROYECTO", "EXAMEN", "REFUERZO", "MEJORA", "EVALUACION")
-        val headersFinales  = listOf("FORMATIVA", "SUMATIVA", "PROMEDIO", "CUALIT. A", "CUALIT. B")
-        val headers = headersGrupo1 + headersFormativa + headersSumativa + headersFinales
-
-        var rowIdx = 0
-        var row = sheet.createRow(rowIdx++)
-        headers.forEachIndexed { i, h ->
-            val cell = row.createCell(i)
-            cell.setCellValue(h)
-            cell.cellStyle = headerStyle
-        }
-
-        // Filas de datos (orden por número/ID)
-        estudiantes.sortedBy { it.numero }.forEach { est ->
-            row = sheet.createRow(rowIdx++)
-            var col = 0
-
-            val notas = est.notas
-
-            // Formativa
-            val actividades = (0 until insumosCount).map { idx -> notas.getOrNull(idx) }
-            val promForm = TablaCalculos.promedioActividades(notas, insumosCount)
-
-            // Sumativa editables
-            val proyecto = notas.getOrNull(insumosCount + 0)
-            val examen   = notas.getOrNull(insumosCount + 1)
-            val refuerzo = notas.getOrNull(insumosCount + 2)
-            val mejora   = notas.getOrNull(insumosCount + 3)
-
-            // Sumativa calculada
-            val evaMejorada = TablaCalculos.evaluacionMejorada(notas, insumosCount)
-
-            // Derivados finales (incluye cualitativos)
-            val der = TablaCalculos.calcularDerivados(notas, insumosCount)
-
-            fun putStr(v: String?) { row.createCell(col++).setCellValue(v ?: "") }
-            fun putNumAsString(n: Double?) { row.createCell(col++).setCellValue(TablaCalculos.formatNota(n)) }
-
-            // Datos personales
-            putStr(est.numero.toString())
-            putStr(est.nombre)
-
-            // Formativa: actividades + promedio formativa
-            actividades.forEach { putNumAsString(it) }
-            putNumAsString(promForm)
-
-            // Sumativa: 4 editables + evaluación mejorada
-            putNumAsString(proyecto)
-            putNumAsString(examen)
-            putNumAsString(refuerzo)
-            putNumAsString(mejora)
-            putNumAsString(evaMejorada)
-
-            // Finales: form 70, sum 30, promedio, cualitativos
-            putNumAsString(der.evFormativa)
-            putNumAsString(der.evSumativa)
-            putNumAsString(der.promedio)
-            putStr(der.cualitativoA)
-            putStr(der.cualitativoB)
-        }
-
-        // Auto-size columnas
-        headers.indices.forEach { i -> sheet.autoSizeColumn(i) }
-
-        // Serializar a bytes
-        val bytes = wb.use { workbook ->
-            val bos = ByteArrayOutputStream()
-            workbook.write(bos)
-            bos.toByteArray()
-        }
-
-        // ---------- 2) Guardar en "Descargas" y confirmar ----------
-        val sdf = SimpleDateFormat("yyyyMMdd_HHmm", Locale.getDefault())
-        val stamp = sdf.format(Date())
-        val fileName = "Calificaciones_${nominaId}_$stamp.xlsx"
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            // Android 10+ : MediaStore (no requiere permisos especiales)
-            val values = ContentValues().apply {
-                put(MediaStore.Downloads.DISPLAY_NAME, fileName)
-                put(MediaStore.Downloads.MIME_TYPE, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-                put(MediaStore.Downloads.IS_PENDING, 1)
-            }
-            val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-                ?: throw IllegalStateException("No se pudo crear el archivo en Descargas.")
-
-            context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
-
-            values.clear()
-            values.put(MediaStore.Downloads.IS_PENDING, 0)
-            context.contentResolver.update(uri, values, null, null)
-
-            mensajealert(context, "📊 Excel guardado en Descargas: $fileName")
-        } else {
-            // Android 5–9: escribir en carpeta pública Descargas (puede requerir WRITE_EXTERNAL_STORAGE)
-            @Suppress("DEPRECATION")
-            val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-            if (!dir.exists()) dir.mkdirs()
-            val outFile = File(dir, fileName)
-            FileOutputStream(outFile).use { it.write(bytes) }
-            mensajealert(context, "📊 Excel guardado en Descargas: ${outFile.name}")
-        }
-    } catch (e: Exception) {
-        mensajealert(context, "❌ Error exportando Excel: ${e.localizedMessage}")
-    }
+private fun terminoToSeccion(t: TerminoEval): String = when (t) {
+    TerminoEval.T1  -> "PrimerTrimestre"
+    TerminoEval.T2  -> "SegundoTrimestre"
+    TerminoEval.T3  -> "TercerTrimestre"
+    TerminoEval.INF -> "InformeAnual"
 }
 
-fun guardarCalificacionesEnFirestore(
+fun cargarDatosDesdeFirestore(
     nominaId: String,
-    estudiantes: List<TablaConfig.EstudianteCalificacion>,
-    onComplete: () -> Unit
-) {
-    val db = FirebaseFirestore.getInstance()
-    val refNomina = db.collection("gestionAcademica")
-        .document("gestionNominas")
-        .collection("nominasEstudiantes")
-        .document(nominaId)
-    val colCalificaciones = refNomina.collection("calificaciones")
-
-    // 1) Leer _config para respetar el insumosCount real de la nómina
-    colCalificaciones.document("_config").get()
-        .addOnSuccessListener { cfg ->
-            val insumosCount = (cfg.getLong("insumosCount") ?: INSUMOS_COUNT.toLong()).toInt()
-
-            // 2) Guardar por idUnico (col1)
-            val batch = db.batch()
-            estudiantes.forEach { est ->
-                val docRef = colCalificaciones.document(est.idUnico)  // ✅ idUnico inmutable
-                val data = mapOf(
-                    "nombre" to est.nombre,
-                    "actividades" to est.notas.take(insumosCount),
-                    "proyecto" to est.notas.getOrNull(insumosCount),
-                    "evaluacion" to est.notas.getOrNull(insumosCount + 1),
-                    "refuerzo" to est.notas.getOrNull(insumosCount + 2),
-                    "mejora" to est.notas.getOrNull(insumosCount + 3),
-                    "updatedAt" to System.currentTimeMillis()
-                )
-                batch.set(docRef, data, com.google.firebase.firestore.SetOptions.merge())
-            }
-            batch.commit().addOnSuccessListener { onComplete() }
-                .addOnFailureListener { onComplete() } // evitamos colgar la UI
-        }
-        .addOnFailureListener {
-            // Si no hay _config, usamos el valor por defecto y guardamos igual
-            val insumosCount = INSUMOS_COUNT
-            val batch = db.batch()
-            estudiantes.forEach { est ->
-                val docRef = colCalificaciones.document(est.idUnico)
-                val data = mapOf(
-                    "nombre" to est.nombre,
-                    "actividades" to est.notas.take(insumosCount),
-                    "proyecto" to est.notas.getOrNull(insumosCount),
-                    "evaluacion" to est.notas.getOrNull(insumosCount + 1),
-                    "refuerzo" to est.notas.getOrNull(insumosCount + 2),
-                    "mejora" to est.notas.getOrNull(insumosCount + 3),
-                    "updatedAt" to System.currentTimeMillis()
-                )
-                batch.set(docRef, data, com.google.firebase.firestore.SetOptions.merge())
-            }
-            batch.commit().addOnCompleteListener { onComplete() }
-        }
-}
-
-fun cargarCalificacionesDesdeFirestore(
-    nominaId: String,
+    termino: TerminoEval,
     onSuccess: (List<TablaConfig.EstudianteCalificacion>) -> Unit,
     onError: (String) -> Unit
 ) {
@@ -586,109 +450,129 @@ fun cargarCalificacionesDesdeFirestore(
         .document("gestionNominas")
         .collection("nominasEstudiantes")
         .document(nominaId)
-    val colCalificaciones = refNomina.collection("calificaciones")
 
-    // 1) Leer la TABLA para obtener el roster (col1..col4)
+    val seccion = terminoToSeccion(termino)
+    val docSeccion = refNomina.collection("calificaciones").document(seccion)
+    val colInsumos = docSeccion.collection("insumos")
+
+    // 1) Roster desde la tabla de la nómina (col1..col4)
     refNomina.get()
         .addOnSuccessListener { nominaDoc ->
-            if (!nominaDoc.exists()) {
-                onError("Nómina no encontrada"); return@addOnSuccessListener
-            }
-
             val tabla = nominaDoc.get("tabla") as? List<Map<String, Any?>> ?: emptyList()
-            val filas = tabla.drop(1) // saltar encabezado
-            // Roster: idUnico (col1), nro (col2), cedula (col3), nombre (col4)
-            data class Roster(val id: String, val nro: Int, val ced: String, val nom: String)
+            val filas = tabla.drop(1)
+            data class R(val id: String, val nro: Int, val ced: String, val nom: String)
             val roster = filas.mapIndexed { idx, fila ->
-                val id    = (fila["col1"] as? String).orEmpty().trim()
-                val nroS  = (fila["col2"] as? String).orEmpty().trim()
-                val nro   = nroS.toIntOrNull() ?: (idx + 1)
-                val ced   = (fila["col3"] as? String).orEmpty().trim()
-                val nom   = (fila["col4"] as? String).orEmpty().trim().ifEmpty { "Alumno" }
-                Roster(id = id, nro = nro, ced = ced, nom = nom)
+                val id  = (fila["col1"] as? String).orEmpty().trim()
+                val nro = ((fila["col2"] as? String).orEmpty().trim()).toIntOrNull() ?: (idx + 1)
+                val ced = (fila["col3"] as? String).orEmpty().trim()
+                val nom = (fila["col4"] as? String).orEmpty().trim()
+                R(id, nro, ced, nom)
             }
-
-            // Si la tabla está vacía devolvemos lista vacía
             if (roster.isEmpty()) { onSuccess(emptyList()); return@addOnSuccessListener }
 
-            // 2) Leer _config para conocer insumosCount
-            colCalificaciones.document("_config").get()
-                .addOnSuccessListener { cfg ->
-                    val insumosCount = (cfg.getLong("insumosCount") ?: INSUMOS_COUNT.toLong()).toInt()
+            // 2) Meta para insumosCount (solo trimestres)
+            docSeccion.get()
+                .addOnSuccessListener { meta ->
+                    val insumosCount =
+                        if (termino == TerminoEval.INF) 0
+                        else (meta.getLong("insumosCount") ?: TablaConfig.INSUMOS_COUNT.toLong()).toInt()
 
-                    // 3) Leer calificaciones existentes
-                    colCalificaciones.get()
+                    // 3) Leer insumos
+                    colInsumos.get()
                         .addOnSuccessListener { snap ->
-                            // Índices para fallback (docs antiguos)
-                            val porId = mutableMapOf<String, Map<String, Any?>>()
-                            val porCed = mutableMapOf<String, Map<String, Any?>>()
-                            val porNom = mutableMapOf<String, Map<String, Any?>>()
+                            val porId = snap.documents.associateBy({ it.id }, { it.data ?: emptyMap<String, Any?>() })
 
-                            snap.documents.forEach { doc ->
-                                if (doc.id == "_config") return@forEach
-                                val data = doc.data ?: return@forEach
-                                porId[doc.id] = data
-                                (data["cedula"] as? String)?.trim()?.uppercase()?.let { if (it.isNotEmpty()) porCed[it] = data }
-                                (data["nombre"] as? String)?.trim()?.uppercase()?.let { if (it.isNotEmpty()) porNom[it] = data }
-                            }
-
-                            // 4) Construir lista final en orden por Nro (col2)
                             val lista = roster.sortedBy { it.nro }.map { r ->
-                                // Buscar primero por idUnico (col1), luego por cédula, luego por nombre
                                 val data = porId[r.id]
-                                    ?: (if (r.ced.isNotBlank()) porCed[r.ced.uppercase()] else null)
-                                    ?: porNom[r.nom.uppercase()]
 
-                                // Actividades (formativas)
-                                val actividades: List<Double?> =
-                                    (data?.get("actividades") as? List<*>)
+                                if (termino == TerminoEval.INF) {
+                                    // Informe: T1,T2,T3,Suple → posiciones 0..3
+                                    val t1 = (data?.get("PromedioT1") as? Number)?.toDouble()
+                                    val t2 = (data?.get("PromedioT2") as? Number)?.toDouble()
+                                    val t3 = (data?.get("PromedioT3") as? Number)?.toDouble()
+                                    val su = (data?.get("Supletorio") as? Number)?.toDouble()
+                                    val notas = mutableListOf<Double?>(t1, t2, t3, su)
+                                    TablaConfig.EstudianteCalificacion(
+                                        idUnico = r.id, numero = r.nro, nombre = r.nom, notas = notas
+                                    )
+                                } else {
+                                    // Trimestre: actividades + 4 sumativas
+                                    val acts = (data?.get("actividades") as? List<*>)
                                         ?.map { (it as? Number)?.toDouble() }
-                                        ?.let { list ->
-                                            // Normalizar a insumosCount
-                                            if (list.size >= insumosCount) list.take(insumosCount)
-                                            else list + List(insumosCount - list.size) { null }
-                                        }
+                                        ?.let { l -> if (l.size >= insumosCount) l.take(insumosCount) else l + List(insumosCount - l.size){ null } }
                                         ?: List(insumosCount) { null }
+                                    val proyecto   = (data?.get("proyecto") as? Number)?.toDouble()
+                                    val evaluacion = (data?.get("evaluacion") as? Number)?.toDouble()
+                                    val refuerzo   = (data?.get("refuerzo") as? Number)?.toDouble()
+                                    val mejora     = (data?.get("mejora") as? Number)?.toDouble()
 
-                                // Sumativas (4)
-                                val proyecto   = (data?.get("proyecto") as? Number)?.toDouble()
-                                val evaluacion = (data?.get("evaluacion") as? Number)?.toDouble()
-                                val refuerzo   = (data?.get("refuerzo") as? Number)?.toDouble()
-                                val mejora     = (data?.get("mejora") as? Number)?.toDouble()
-
-                                // Cálculos derivados (misma lógica que tenías)
-                                val actValidas = actividades.filterNotNull()
-                                val evFormativa = if (actValidas.isNotEmpty()) actValidas.average() * 0.7 else null
-                                val sumativas = listOfNotNull(proyecto, evaluacion, refuerzo, mejora)
-                                val evSumativa = if (sumativas.isNotEmpty()) sumativas.average() * 0.3 else null
-                                val evTrimestral = if (evFormativa != null && evSumativa != null) evFormativa + evSumativa else null
-                                val promedio = evTrimestral
-                                val cualitativoA: Double? = null
-                                val cualitativoB: Double? = null
-
-                                val notas = actividades +
-                                        listOf(proyecto, evaluacion, refuerzo, mejora) +
-                                        listOf(evTrimestral, evFormativa, evSumativa, promedio, cualitativoA, cualitativoB)
-
-                                TablaConfig.EstudianteCalificacion(
-                                    idUnico = r.id,     // ✅ idUnico (col1)
-                                    numero  = r.nro,
-                                    nombre  = r.nom,
-                                    notas   = notas.toMutableList()
-                                )
+                                    val notas = (acts + listOf(proyecto, evaluacion, refuerzo, mejora)).toMutableList()
+                                    TablaConfig.EstudianteCalificacion(
+                                        idUnico = r.id, numero = r.nro, nombre = r.nom, notas = notas
+                                    )
+                                }
                             }
-
                             onSuccess(lista)
                         }
-                        .addOnFailureListener { e ->
-                            onError(e.localizedMessage ?: "Error leyendo calificaciones")
-                        }
+                        .addOnFailureListener { e -> onError(e.localizedMessage ?: "Error leyendo insumos ($seccion)") }
                 }
-                .addOnFailureListener { e ->
-                    onError(e.localizedMessage ?: "Error leyendo _config")
-                }
+                .addOnFailureListener { e -> onError(e.localizedMessage ?: "Error leyendo sección $seccion") }
         }
-        .addOnFailureListener { e ->
-            onError(e.localizedMessage ?: "Error leyendo nómina")
-        }
+        .addOnFailureListener { e -> onError(e.localizedMessage ?: "Error leyendo nómina") }
 }
+
+fun guardarDatosEnFirestore(
+    nominaId: String,
+    termino: TerminoEval,
+    estudiantes: List<TablaConfig.EstudianteCalificacion>,
+    onComplete: () -> Unit
+) {
+    val db = FirebaseFirestore.getInstance()
+    val refNomina = db.collection("gestionAcademica")
+        .document("gestionNominas")
+        .collection("nominasEstudiantes")
+        .document(nominaId)
+
+    val seccion = terminoToSeccion(termino)
+    val docSeccion = refNomina.collection("calificaciones").document(seccion)
+    val colInsumos = docSeccion.collection("insumos")
+
+    // Para trimestres, necesito saber insumosCount
+    docSeccion.get()
+        .addOnSuccessListener { meta ->
+            val insumosCount =
+                if (termino == TerminoEval.INF) 0
+                else (meta.getLong("insumosCount") ?: TablaConfig.INSUMOS_COUNT.toLong()).toInt()
+
+            val batch = db.batch()
+
+            estudiantes.forEach { est ->
+                val docRef = colInsumos.document(est.idUnico)
+                val data = when (termino) {
+                    TerminoEval.INF -> {
+                        val suple = est.notas.getOrNull(3)
+                        mapOf(
+                            // solo lo editable
+                            "Supletorio" to suple,
+                            "updatedAt" to System.currentTimeMillis()
+                        )
+                    }
+                    else -> {
+                        mapOf(
+                            "actividades" to est.notas.take(insumosCount),
+                            "proyecto"    to est.notas.getOrNull(insumosCount + 0),
+                            "evaluacion"  to est.notas.getOrNull(insumosCount + 1),
+                            "refuerzo"    to est.notas.getOrNull(insumosCount + 2),
+                            "mejora"      to est.notas.getOrNull(insumosCount + 3),
+                            "updatedAt"   to System.currentTimeMillis()
+                        )
+                    }
+                }
+                batch.set(docRef, data, com.google.firebase.firestore.SetOptions.merge())
+            }
+
+            batch.commit().addOnCompleteListener { onComplete() }
+        }
+        .addOnFailureListener { onComplete() }
+}
+

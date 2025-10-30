@@ -20,11 +20,14 @@ import com.holman.sgd.ui.theme.*
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.navigation.NavHostController
 import com.holman.sgd.resources.CustomButton
 import com.holman.sgd.resources.FondoScreenDefault
+import com.holman.sgd.resources.TituloScreenNominas
+import com.holman.sgd.resources.components.ContenedorPrincipal
 import com.holman.sgd.resources.screens.isTablet
 import kotlin.String
 
@@ -36,12 +39,12 @@ enum class NominaFormulario {
 
 @Composable
 fun Nominas(navController: NavHostController) {
-    var formularioActual by remember { mutableStateOf(NominaFormulario.MENU) }
-    val context = LocalContext.current
+    // ⬇️ antes: remember { mutableStateOf(...) }
+    var formularioActual by rememberSaveable { mutableStateOf(NominaFormulario.MENU) }
 
+    val context = LocalContext.current
     val datosExcel = remember { mutableStateListOf<List<String>>() }
 
-    // Intercepta “Atrás” a nivel del módulo
     BackHandler(enabled = true) {
         when (formularioActual) {
             NominaFormulario.MENU -> navController.popBackStack()
@@ -77,8 +80,8 @@ fun Nominas(navController: NavHostController) {
     }
 }
 
-
-@SuppressLint("UnusedBoxWithConstraintsScope")
+///
+@SuppressLint("UnusedMaterial3ScaffoldPaddingParameter", "UnusedBoxWithConstraintsScope")
 @Composable
 fun MenuNominas(
     navController: NavHostController,
@@ -94,97 +97,100 @@ fun MenuNominas(
             "Revisar nómina",
             R.drawable.ic_revisar,
             "Accede a nóminas registradas.\nPermite editar, borrar y actualizar estudiantes."
-        ),
+        )
     )
 
     Scaffold(
-        containerColor = Color.Transparent, // 🔹 transparente para dejar ver el fondo
-        bottomBar = {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                CustomButton(
-                    text = "Volver",
-                    borderColor = ButtonDarkGray,
-                    onClick = { navController.popBackStack() },
-                )
-            }
-        }
-    ) { innerPadding ->
+        containerColor = Color.Transparent,
+        contentWindowInsets = WindowInsets(0) // evita el padding automático del Scaffold
+    ) {
         Box(modifier = Modifier.fillMaxSize()) {
             FondoScreenDefault()
 
             BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(innerPadding)
+                    .padding(ContenedorPrincipal)
             ) {
-                val maxWidthDp = maxWidth
-                val cardsPerRow = if (maxWidthDp < 700.dp) 2 else 4
+                val availableWidth = maxWidth
+                val cardsPerRow = if (availableWidth < 700.dp) 2 else 4
 
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 16.dp)
-                        .verticalScroll(rememberScrollState()),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = "Gestión de nóminas",
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = TextoOscuro,
-                        modifier = Modifier.padding(bottom = 10.dp)
-                    )
-                    Text(
-                        text = "Aquí puedes crear o revisar las nóminas guardadas en el sistema.\n" +
-                                "Utiliza las opciones para administrar la información de nóminas de manera rápida y sencilla.",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Normal,
-                        color = TextoOscuro,
-                        modifier = Modifier.padding(bottom = 30.dp),
-                        textAlign = TextAlign.Center
-                    )
+                Column(modifier = Modifier.fillMaxSize()) {
+                    // 🔹 Contenido desplazable
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .verticalScroll(rememberScrollState()),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        TituloScreenNominas(texto = "Gestión de nóminas")
+                        Spacer(modifier = Modifier.width(8.dp))
 
-                    // 🔹 Filas dinámicas de cards
-                    for (i in cards.indices step cardsPerRow) {
-                        val rowItems = cards.drop(i).take(cardsPerRow)
+                        Text(
+                            text = "Aquí puedes crear o revisar las nóminas guardadas en el sistema.\n" +
+                                    "Utiliza las opciones para administrar la información de nóminas de manera rápida y sencilla.",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Normal,
+                            color = TextDefaultBlack,
+                            modifier = Modifier.padding(bottom = 30.dp),
+                            textAlign = TextAlign.Center
+                        )
 
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(
-                                16.dp,
-                                Alignment.CenterHorizontally
-                            )
-                        ) {
-                            rowItems.forEach { (title, icon, description) ->
-                                val onClick = when (title) {
-                                    "Crear nómina" -> { { onFormularioSeleccionado(NominaFormulario.CREAR) } }
-                                    "Revisar nómina" -> { { onFormularioSeleccionado(NominaFormulario.REVISAR) } }
-                                    else -> { {} }
-                                }
-
-                                MenuCardNominas(
-                                    title = title,
-                                    iconResId = icon,
-                                    backgroundColor = Card1,
-                                    descriptionCard = description,
-                                    modifier = Modifier.weight(1f),
-                                    onClick = onClick
+                        // 🔹 Filas dinámicas de cards
+                        for (i in cards.indices step cardsPerRow) {
+                            val rowItems = cards.drop(i).take(cardsPerRow)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(
+                                    16.dp,
+                                    Alignment.CenterHorizontally
                                 )
+                            ) {
+                                rowItems.forEach { (title, icon, description) ->
+                                    val onClick = when (title) {
+                                        "Crear nómina" -> { { onFormularioSeleccionado(NominaFormulario.CREAR) } }
+                                        "Revisar nómina" -> { { onFormularioSeleccionado(NominaFormulario.REVISAR) } }
+                                        else -> ({})
+                                    }
+
+                                    MenuCardNominas(
+                                        title = title,
+                                        iconResId = icon,
+                                        backgroundColor = Card1,
+                                        descriptionCard = description,
+                                        modifier = Modifier.weight(1f),
+                                        onClick = onClick
+                                    )
+                                }
                             }
                         }
+
+                        Spacer(Modifier.height(8.dp))
+                    }
+
+                    // 🔹 Botón dentro del contenedor principal (parte inferior)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(),
+                            //.navigationBarsPadding(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CustomButton(
+                            text = "Volver",
+                            borderColor = ButtonDarkGray,
+                            onClick = { navController.popBackStack() },
+                        )
                     }
                 }
             }
         }
     }
 }
+
+
+
 
 /////////////
 

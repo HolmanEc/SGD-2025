@@ -73,6 +73,8 @@ import androidx.compose.material3.Scaffold
 import com.holman.sgd.resources.NominaHeaderCard
 import android.annotation.SuppressLint
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.filled.*
@@ -80,8 +82,10 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -92,8 +96,152 @@ import com.holman.sgd.ui.theme.TextDefaultBlack
 import androidx.compose.ui.zIndex
 import com.google.firebase.firestore.SetOptions
 import com.holman.sgd.resources.FondoScreenDefault
+import com.holman.sgd.resources.TituloScreenNominas
 import com.holman.sgd.resources.calificaciones.TablaConfig
+import com.holman.sgd.resources.components.ContenedorPrincipal
 import java.util.UUID
+
+
+
+
+private val SECCIONES_CALIF = listOf("PrimerTrimestre", "SegundoTrimestre", "TercerTrimestre", "Informe")
+private const val SUBCOLECCION_ALUMNOS = "insumos"
+
+fun syncCalificacionesSeccionesConTabla(
+    nominaId: String,
+    estudiantesActuales: List<EstudianteNomina>,
+    insumosCount: Int = TablaConfig.INSUMOS_COUNT,
+    onDone: (Boolean, String?) -> Unit = { _, _ -> }
+) {
+    val db = FirebaseFirestore.getInstance()
+    val nominaRef = db.collection("gestionAcademica")
+        .document("gestionNominas")
+        .collection("nominasEstudiantes")
+        .document(nominaId)
+
+    val idsActuales = estudiantesActuales.map { it.idUnico }.toSet()
+    val now = System.currentTimeMillis()
+
+    // 1) Leer/crear documentos base de cada sección (por si no existen)
+    val baseWrites = SECCIONES_CALIF.map { sec ->
+        val secDoc = nominaRef.collection("calificaciones").document(sec)
+        val base = mutableMapOf<String, Any>(
+            "seccion" to sec,
+            "tipo" to if (sec == "Informe") "informe" else "trimestre",
+            "updatedAt" to now
+        )
+        if (sec != "Informe") {
+            base["insumosCount"] = insumosCount
+            base["weights"] = mapOf("formativa" to 0.7, "sumativa" to 0.3)
+        }
+        secDoc.set(base, SetOptions.merge())
+    }
+
+    com.google.android.gms.tasks.Tasks.whenAllComplete(baseWrites)
+        .addOnSuccessListener {
+            // 2) Por cada sección:
+            //    - Leer alumnos existentes
+            //    - Borrar huérfanos
+            //    - Crear faltantes (payload por tipo)
+            fun procesarSeccion(idx: Int) {
+                if (idx >= SECCIONES_CALIF.size) {
+                    onDone(true, null); return
+                }
+                val sec = SECCIONES_CALIF[idx]
+                val secDoc = nominaRef.collection("calificaciones").document(sec)
+                val colAlumnos = secDoc.collection(SUBCOLECCION_ALUMNOS)
+
+                colAlumnos.get()
+                    .addOnSuccessListener { snap ->
+                        val existentesIds = snap.documents.map { it.id }.toSet()
+
+                        val batchOps = mutableListOf<Pair<com.google.firebase.firestore.DocumentReference, Any?>>()
+
+                        // 2.a) Borrar huérfanos
+                        snap.documents.forEach { d ->
+                            if (d.id !in idsActuales) {
+                                batchOps += d.reference to null // null = delete
+                            }
+                        }
+
+                        // 2.b) Crear faltantes / asegurar esquema
+                        estudiantesActuales.forEachIndexed { index, est ->
+                            val alumnoRef = colAlumnos.document(est.idUnico)
+                            if (est.idUnico !in existentesIds) {
+                                val data: Map<String, Any?> =
+                                    if (sec == "Informe") {
+                                        mapOf(
+                                            "seccion" to sec,
+                                            "numero" to (index + 1),
+                                            "cedula" to est.cedula,
+                                            "nombre" to est.nombre,
+                                            "PromedioT1" to null,
+                                            "PromedioT2" to null,
+                                            "PromedioT3" to null,
+                                            "Supletorio" to null,
+                                            "PromedioFinal" to null,
+                                            "createdAt" to now,
+                                            "updatedAt" to now
+                                        )
+                                    } else {
+                                        mapOf(
+                                            "seccion" to sec,
+                                            "numero" to (index + 1),
+                                            "cedula" to est.cedula,
+                                            "nombre" to est.nombre,
+                                            "actividades" to List(insumosCount) { null },
+                                            "proyecto" to null,
+                                            "evaluacion" to null,
+                                            "refuerzo" to null,
+                                            "mejora" to null,
+                                            "createdAt" to now,
+                                            "updatedAt" to now
+                                        )
+                                    }
+                                batchOps += alumnoRef to data
+                            } else {
+                                // Existe: opcionalmente actualiza número/cedula/nombre (merge)
+                                val merge = mapOf(
+                                    "numero" to (index + 1),
+                                    "cedula" to est.cedula,
+                                    "nombre" to est.nombre,
+                                    "updatedAt" to now
+                                )
+                                batchOps += alumnoRef to merge
+                            }
+                        }
+
+                        // 2.c) Commit en lotes (≤450 sets/updates/deletes por batch)
+                        val MAX = 450
+                        val chunks = batchOps.chunked(MAX)
+
+                        fun commitChunk(cidx: Int) {
+                            if (cidx >= chunks.size) {
+                                // siguiente sección
+                                procesarSeccion(idx + 1); return
+                            }
+                            val b = db.batch()
+                            chunks[cidx].forEach { (ref, payload) ->
+                                if (payload == null) b.delete(ref)
+                                else b.set(ref, payload, SetOptions.merge())
+                            }
+                            b.commit()
+                                .addOnSuccessListener { commitChunk(cidx + 1) }
+                                .addOnFailureListener { e -> onDone(false, e.localizedMessage) }
+                        }
+                        if (chunks.isEmpty()) procesarSeccion(idx + 1) else commitChunk(0)
+                    }
+                    .addOnFailureListener { e -> onDone(false, e.localizedMessage) }
+            }
+
+            procesarSeccion(0)
+        }
+        .addOnFailureListener { e -> onDone(false, e.localizedMessage) }
+}
+
+/////
+
+
 
 @Composable
 fun revisarNomina(onBack: () -> Unit)
@@ -104,18 +252,20 @@ fun revisarNomina(onBack: () -> Unit)
     var isLoading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    // Estados de navegación interna
-    var nominaAEditar by remember { mutableStateOf<NominaResumen?>(null) }
-    var headerColorSelected by remember { mutableStateOf<Color?>(null) }
+    // ⬇️ ESTADOS PERSISTENTES (sobreviven rotación)
+    var nominaIdAbierta by rememberSaveable { mutableStateOf<String?>(null) }
+    var headerColorArgb by rememberSaveable { mutableStateOf<Int?>(null) }
+
+    // Estados de navegación interna (no necesitan persistir como objeto)
+    // ❌ var nominaAEditar by remember { ... }  ← ya no se usa
+    // ❌ var headerColorSelected by remember { ... }  ← ya no se usa
 
     // Confirmación de borrado
     var nominaAEliminar by remember { mutableStateOf<NominaResumen?>(null) }
     var isDeleting by remember { mutableStateOf(false) }
 
-    // 👉 Estados NUEVOS para pre-carga antes de abrir el detalle
+    // Pre-carga antes de abrir el detalle
     var preloading by remember { mutableStateOf(false) }
-    var pendingNomina by remember { mutableStateOf<NominaResumen?>(null) }
-    var pendingHeaderColor by remember { mutableStateOf<Color?>(null) }
     var preloadedEstudiantes by remember { mutableStateOf<List<EstudianteNomina>?>(null) }
 
     val isBusy by remember { derivedStateOf { isLoading || isDeleting || preloading } }
@@ -129,9 +279,10 @@ fun revisarNomina(onBack: () -> Unit)
             isBusy -> Unit
             nominaParaEditar != null -> nominaParaEditar = null
             nominaAEliminar != null -> nominaAEliminar = null
-            nominaAEditar != null -> {
-                nominaAEditar = null
-                headerColorSelected = null
+            nominaIdAbierta != null -> {
+                // cerrar detalle persistente
+                nominaIdAbierta = null
+                headerColorArgb = null
                 preloadedEstudiantes = null
             }
             else -> onBack()
@@ -152,29 +303,41 @@ fun revisarNomina(onBack: () -> Unit)
         )
     }
 
-    // Detalle abierto
-    nominaAEditar?.let { nomina ->
-        ScreenRevisarDetalleNomina(
-            nomina = nomina,
-            headerColor = headerColorSelected ?: MaterialTheme.colorScheme.primary,
-            initialEstudiantes = preloadedEstudiantes,
-            onBack = {
-                nominaAEditar = null
-                headerColorSelected = null
-                preloadedEstudiantes = null
+    // ⬇️ SI HAY DETALLE ABIERTO, muéstralo (y NO vuelvas a la lista aunque nominas todavía cargue)
+    nominaIdAbierta?.let { abiertoId ->
+        val nominaEncontrada = nominas.firstOrNull { it.id == abiertoId }
+        if (nominaEncontrada == null) {
+            // Aún no se reconstruye la nómina desde la lista tras rotación: muestra loader, no la lista
+            Box(Modifier.fillMaxSize()) {
+                FondoScreenDefault()
+                LoadingDotsOverlay(isLoading = true)
             }
-        )
-        return
+            return
+        } else {
+            ScreenRevisarDetalleNomina(
+                nomina = nominaEncontrada,
+                headerColor = headerColorArgb?.let { Color(it) } ?: MaterialTheme.colorScheme.primary,
+                initialEstudiantes = preloadedEstudiantes,
+                onBack = {
+                    nominaIdAbierta = null
+                    headerColorArgb = null
+                    preloadedEstudiantes = null
+                }
+            )
+            return
+        }
     }
 
-    // Lista (se mantiene visible aun durante la pre-carga)
+    // ===== LISTA (tu diseño original) =====
     Box(modifier = Modifier.fillMaxSize())
     {
         FondoScreenDefault()
         Column(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(ContenedorPrincipal),
             verticalArrangement = Arrangement.Top
-        ) {
+        )  {
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -197,27 +360,15 @@ fun revisarNomina(onBack: () -> Unit)
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = "📋 No hay nóminas guardadas.",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Medium,
-                            textAlign = TextAlign.Center
-                        )
+                        TituloScreenNominas(texto = "No hay nóminas Guardadas")
                     }
                     else -> Column(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(start = 16.dp, top = 16.dp, end = 16.dp)
+                            //.padding(start = 16.dp, top = 16.dp, end = 16.dp)
                     ) {
-                        Text(
-                            text = "📋 Nóminas Guardadas",
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .wrapContentWidth(Alignment.CenterHorizontally)
-                                .padding(top = 16.dp, bottom = 8.dp)
-                        )
+                        TituloScreenNominas(texto = "Nóminas Guardadas")
+                        Spacer(modifier = Modifier.width(8.dp))
 
                         Box(
                             modifier = Modifier
@@ -229,10 +380,7 @@ fun revisarNomina(onBack: () -> Unit)
                                 onRevisar = { n, color ->
                                     if (isBusy) return@ListaNominas
 
-                                    // PRE-CARGA antes de navegar al detalle:
                                     preloading = true
-                                    pendingNomina = n
-                                    pendingHeaderColor = color
                                     preloadedEstudiantes = null
 
                                     cargarEstudiantesDeNomina(
@@ -241,13 +389,9 @@ fun revisarNomina(onBack: () -> Unit)
                                             preloadedEstudiantes = lista
                                             preloading = false
 
-                                            // Ya con datos → abrir el detalle
-                                            nominaAEditar = pendingNomina
-                                            headerColorSelected = pendingHeaderColor
-
-                                            // limpiar pendings
-                                            pendingNomina = null
-                                            pendingHeaderColor = null
+                                            // ⬇️ Persistimos PRIMITIVOS (sobreviven a rotación)
+                                            nominaIdAbierta = n.id
+                                            headerColorArgb = color.toArgb()
                                         },
                                         onError = { msg ->
                                             preloading = false
@@ -264,10 +408,11 @@ fun revisarNomina(onBack: () -> Unit)
                 }
             }
 
+            Spacer(modifier = Modifier.height(12.dp))
+
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                    .fillMaxWidth(),
                 contentAlignment = Alignment.Center
             ) {
                 CustomButton(
@@ -278,11 +423,10 @@ fun revisarNomina(onBack: () -> Unit)
             }
         }
 
-        // Overlay cubre carga inicial, borrado y pre-carga del detalle
         LoadingDotsOverlay(isLoading = isBusy)
     }
 
-    // Modal Confirmación Borrar
+    // —— Modal Confirmación Borrar
     nominaAEliminar?.let { nomina ->
         ModalConfirmarBorrar(
             nomina = nomina,
@@ -296,6 +440,11 @@ fun revisarNomina(onBack: () -> Unit)
                         nominas = nominas.filterNot { it.id == nomina.id }
                         isDeleting = false
                         mensajealert(context, "✅  La nómina ha sido eliminada completamente.")
+                        if (nominaIdAbierta == nomina.id) {
+                            nominaIdAbierta = null
+                            headerColorArgb = null
+                            preloadedEstudiantes = null
+                        }
                     },
                     onError = { msg ->
                         isDeleting = false
@@ -307,7 +456,7 @@ fun revisarNomina(onBack: () -> Unit)
         )
     }
 
-    // Modal Editar Metadatos
+    // —— Modal Editar Metadatos
     nominaParaEditar?.let { n ->
         ModalEditarNomina(
             nomina = n,
@@ -320,7 +469,6 @@ fun revisarNomina(onBack: () -> Unit)
         )
     }
 }
-
 
 @Composable
 fun ListaNominas(
@@ -361,42 +509,84 @@ fun ScreenRevisarDetalleNomina(
 ) {
     val context = LocalContext.current
 
-    // Si trae initialEstudiantes, parte con ellos y NO muestres loading
     var estudiantes by remember { mutableStateOf<List<EstudianteNomina>>(initialEstudiantes ?: emptyList()) }
     var estudiantesOriginal by remember { mutableStateOf<List<EstudianteNomina>>(initialEstudiantes ?: emptyList()) }
-    var isLoading by remember { mutableStateOf(initialEstudiantes == null) } // 👈 clave
+    var isLoading by remember { mutableStateOf(initialEstudiantes == null) }
     var isSaving by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var editingField by remember { mutableStateOf<Pair<Int, String>?>(null) }
 
     val listState = rememberLazyListState()
-    var scrollToEnd by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
+
+    var showAddDialog by remember { mutableStateOf(false) }
+    var scrollToId by remember { mutableStateOf<String?>(null) }
 
     val fontSizeEstudiantes = 14.sp
     val isBusy by remember { derivedStateOf { isLoading || isSaving } }
 
     fun normalize(list: List<EstudianteNomina>) =
-        list.sortedBy { it.nombre }.map { it.copy(nombre = it.nombre.trim(), cedula = it.cedula.trim()) }
+        list.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.nombre.trim() })
+            .map { it.copy(nombre = it.nombre.trim(), cedula = it.cedula.trim()) }
 
     fun hasChanges(): Boolean = normalize(estudiantes) != normalize(estudiantesOriginal)
 
-    // Back dentro del detalle (regresa a la lista)
+    fun guardarAhora() {
+        if (!hasChanges()) {
+            mensajealert(context, "ℹ️ No hay cambios para guardar.")
+            return
+        }
+        val hayVacios = estudiantes.any { it.cedula.isBlank() || it.nombre.isBlank() }
+        if (hayVacios) {
+            mensajealert(context, "⚠️ Completa cédula y nombre en todos los estudiantes.")
+            return
+        }
+
+        isSaving = true
+        val estudiantesOrdenados = normalize(estudiantes)
+
+        actualizarEstudiantesDeNomina(
+            nomina.id,
+            estudiantesOrdenados,
+            onSuccess = {
+                mensajealert(context, "✅ Datos actualizados")
+                editingField = null
+                cargarEstudiantesDeNomina(
+                    nominaId = nomina.id,
+                    onSuccess = { lista ->
+                        estudiantes = lista
+                        estudiantesOriginal = lista
+                        coroutineScope.launch { listState.scrollToItem(0) }
+                        isSaving = false
+                    },
+                    onError = { msg ->
+                        mensajealert(context, "⚠️ No se pudo recargar: $msg")
+                        isSaving = false
+                    }
+                )
+            },
+            onError = { msg ->
+                mensajealert(context, "❌ Error: $msg")
+                isSaving = false
+            }
+        )
+    }
+
+    // Back dentro del detalle
     BackHandler(enabled = true) {
         if (isBusy) return@BackHandler
         onBack()
     }
 
-    LaunchedEffect(scrollToEnd) {
-        if (scrollToEnd && estudiantes.isNotEmpty()) {
-            listState.animateScrollToItem(estudiantes.size - 1)
-            scrollToEnd = false
-        }
+    LaunchedEffect(scrollToId, estudiantes) {
+        val id = scrollToId ?: return@LaunchedEffect
+        val idx = estudiantes.indexOfFirst { it.idUnico == id }
+        if (idx >= 0) listState.animateScrollToItem(idx)
+        scrollToId = null
     }
 
-    // Solo carga si NO recibimos datos precargados
-    LaunchedEffect(nomina.id) {
-        if (initialEstudiantes == null) {
+    if (initialEstudiantes == null) {
+        LaunchedEffect(nomina.id) {
             cargarEstudiantesDeNomina(
                 nominaId = nomina.id,
                 onSuccess = {
@@ -412,275 +602,286 @@ fun ScreenRevisarDetalleNomina(
         }
     }
 
-    Scaffold(
-        containerColor = BackgroundDefault,
-        floatingActionButton = {
-            FloatingSaveButton(
-                visible = !isBusy,
-                onClick = {
-                    if (!hasChanges()) {
-                        mensajealert(context, "ℹ️ No hay cambios para guardar.")
-                        return@FloatingSaveButton
-                    }
-                    val hayVacios = estudiantes.any { it.cedula.isBlank() || it.nombre.isBlank() }
-                    if (hayVacios) {
-                        mensajealert(context, "⚠️ Completa cédula y nombre en todos los estudiantes.")
-                        return@FloatingSaveButton
-                    }
+    Scaffold(containerColor = BackgroundDefault) { _ ->
 
-                    isSaving = true
-                    val estudiantesOrdenados = normalize(estudiantes)
+        CompositionLocalProvider(
+            LocalTextStyle provides LocalTextStyle.current.copy(color = TextDefaultBlack)
+        ) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                FondoScreenDefault()
 
-                    actualizarEstudiantesDeNomina(
-                        nomina.id,
-                        estudiantesOrdenados,
-                        onSuccess = {
-                            mensajealert(context, "✅ Datos actualizados")
-                            editingField = null
-                            cargarEstudiantesDeNomina(
-                                nominaId = nomina.id,
-                                onSuccess = { lista ->
-                                    estudiantes = lista
-                                    estudiantesOriginal = lista
-                                    coroutineScope.launch { listState.scrollToItem(0) }
-                                    isSaving = false
-                                },
-                                onError = { msg ->
-                                    mensajealert(context, "⚠️ No se pudo recargar: $msg")
-                                    isSaving = false
-                                }
-                            )
-                        },
-                        onError = { msg ->
-                            mensajealert(context, "❌ Error: $msg")
-                            isSaving = false
-                        }
-                    )
-                },
-                modifier = Modifier.offset(x = (-4).dp, y = -100.dp),
-            )
-        }
-    ) { _ ->
-        Box(modifier = Modifier.fillMaxSize()) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 16.dp, vertical = 16.dp)
-            ) {
                 Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(ContenedorPrincipal)
                 ) {
-                    CustomButton(
-                        text = "Volver a nóminas",
-                        borderColor = ButtonDarkGray,
-                        onClick = { if (!isBusy) onBack() }
+                    NominaHeaderCard(
+                        nomina = nomina,
+                        backgroundColor = headerColor,
+                        onClick = null
                     )
-                }
 
-                Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(12.dp))
 
-                NominaHeaderCard(
-                    nomina = nomina,
-                    backgroundColor = headerColor,
-                    onClick = null
-                )
-
-                Spacer(Modifier.height(12.dp))
-
-                when {
-                    isLoading -> {
-                        Spacer(Modifier.height(1.dp))
-                    }
-                    error != null -> Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        Text("❌ Error: $error", color = Color.Red)
-                    }
-                    else -> {
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .background(headerColor, shape = RoundedCornerShape(8.dp))
-                                .padding(vertical = 10.dp, horizontal = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                "  CÉDULA",
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = fontSizeEstudiantes,
-                                modifier = Modifier.weight(0.25f),
-                                color = Color.Black
-                            )
-                            Text(
-                                "  ESTUDIANTE",
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = fontSizeEstudiantes,
-                                modifier = Modifier.weight(0.6f),
-                                color = Color.Black
-                            )
-                            Text(
-                                "ACCIÓN",
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = fontSizeEstudiantes,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.weight(0.15f),
-                                color = Color.Black
-                            )
+                    when {
+                        isLoading -> {
+                            Spacer(Modifier.height(1.dp))
                         }
+                        error != null -> Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                            Text("❌ Error: $error")
+                        }
+                        else -> {
+                            // Encabezado de columnas
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .background(headerColor, shape = RoundedCornerShape(8.dp))
+                                    .padding(vertical = 12.dp, horizontal = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "CÉDULA",
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = fontSizeEstudiantes,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier
+                                        .weight(0.25f)
+                                        .fillMaxWidth()
+                                )
+                                Text(
+                                    text = "ESTUDIANTE",
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = fontSizeEstudiantes,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier
+                                        .weight(0.6f)
+                                        .fillMaxWidth()
+                                )
+                                Text(
+                                    text = "ACCIÓN",
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = fontSizeEstudiantes,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier
+                                        .weight(0.15f)
+                                        .fillMaxWidth()
+                                )
+                            }
 
-                        LazyColumn(
-                            state = listState,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            itemsIndexed(estudiantes, key = { _, it -> it.idUnico }) { index, est ->
+                            Spacer(Modifier.height(8.dp))
 
-                                val isCedulaEditing = editingField?.first == index && editingField?.second == "cedula"
-                                val isNombreEditing = editingField?.first == index && editingField?.second == "nombre"
+                            // Lista principal
+                            LazyColumn(
+                                state = listState,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f)
+                                    .background(headerColor, shape = RoundedCornerShape(8.dp))
+                                    .padding(vertical = 16.dp, horizontal = 16.dp),
+                            ) {
+                                itemsIndexed(estudiantes, key = { _, it -> it.idUnico }) { index, est ->
+                                    val isCedulaEditing = editingField?.first == index && editingField?.second == "cedula"
+                                    val isNombreEditing = editingField?.first == index && editingField?.second == "nombre"
 
-                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                    // CÉDULA
-                                    if (isCedulaEditing) {
-                                        val focusRequesterCedula = remember { FocusRequester() }
-                                        OutlinedTextField(
-                                            value = est.cedula,
-                                            onValueChange = { nuevo ->
-                                                val filtrado = nuevo.uppercase().filter { it.isLetterOrDigit() }
-                                                estudiantes = estudiantes.toMutableList().also { lista ->
-                                                    lista[index] = lista[index].copy(cedula = filtrado)
-                                                }
-                                            },
-                                            label = { Text("Cédula", fontSize = fontSizeEstudiantes) },
-                                            textStyle = LocalTextStyle.current.copy(fontSize = fontSizeEstudiantes),
-                                            singleLine = true,
-                                            enabled = !isBusy,
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        // 🔹 CÉDULA
+                                        if (isCedulaEditing) {
+                                            val focusRequesterCedula = remember { FocusRequester() }
+                                            OutlinedTextField(
+                                                value = est.cedula,
+                                                onValueChange = { nuevo ->
+                                                    val filtrado = nuevo.uppercase().filter { it.isLetterOrDigit() }
+                                                    estudiantes = estudiantes.toMutableList().also { lista ->
+                                                        lista[index] = lista[index].copy(cedula = filtrado)
+                                                    }
+                                                },
+                                                label = { Text("Cédula", fontSize = fontSizeEstudiantes) },
+                                                textStyle = LocalTextStyle.current.copy(
+                                                    fontSize = fontSizeEstudiantes,
+                                                    textAlign = TextAlign.Center
+                                                ),
+                                                singleLine = true,
+                                                enabled = !isBusy,
+                                                modifier = Modifier
+                                                    .weight(0.25f)
+                                                    .fillMaxWidth()
+                                                    .focusRequester(focusRequesterCedula)
+                                                    .onFocusChanged { if (it.isFocused) editingField = index to "cedula" },
+                                                keyboardOptions = KeyboardOptions(
+                                                    keyboardType = KeyboardType.Ascii,
+                                                    imeAction = ImeAction.Done
+                                                ),
+                                                keyboardActions = KeyboardActions(onDone = { editingField = null })
+                                            )
+                                            LaunchedEffect(Unit) { focusRequesterCedula.requestFocus() }
+                                        } else {
+                                            Text(
+                                                text = est.cedula.ifEmpty { "Cédula" },
+                                                fontSize = fontSizeEstudiantes,
+                                                textAlign = TextAlign.Center,
+                                                modifier = Modifier
+                                                    .weight(0.25f)
+                                                    .fillMaxWidth()
+                                                    .clickable(enabled = !isBusy) { editingField = index to "cedula" }
+                                            )
+                                        }
+
+                                        // 🔹 NOMBRE
+                                        if (isNombreEditing) {
+                                            val focusRequesterNombre = remember { FocusRequester() }
+                                            OutlinedTextField(
+                                                value = est.nombre,
+                                                onValueChange = { nuevo ->
+                                                    val filtrado = nuevo.uppercase().filter { it.isLetter() || it.isWhitespace() }
+                                                    estudiantes = estudiantes.toMutableList().also { lista ->
+                                                        lista[index] = lista[index].copy(nombre = filtrado)
+                                                    }
+                                                },
+                                                label = { Text("Nombre", fontSize = fontSizeEstudiantes) },
+                                                textStyle = LocalTextStyle.current.copy(
+                                                    fontSize = fontSizeEstudiantes,
+                                                    textAlign = TextAlign.Left
+                                                ),
+                                                singleLine = true,
+                                                enabled = !isBusy,
+                                                modifier = Modifier
+                                                    .weight(0.6f)
+                                                    .fillMaxWidth()
+                                                    .focusRequester(focusRequesterNombre)
+                                                    .onFocusChanged { if (it.isFocused) editingField = index to "nombre" },
+                                                keyboardOptions = KeyboardOptions(
+                                                    keyboardType = KeyboardType.Text,
+                                                    imeAction = ImeAction.Done
+                                                ),
+                                                keyboardActions = KeyboardActions(onDone = { editingField = null })
+                                            )
+                                            LaunchedEffect(Unit) { focusRequesterNombre.requestFocus() }
+                                        } else {
+                                            Text(
+                                                text = est.nombre.ifEmpty { "Nombre" },
+                                                fontSize = fontSizeEstudiantes,
+                                                textAlign = TextAlign.Left,
+                                                modifier = Modifier
+                                                    .weight(0.6f)
+                                                    .fillMaxWidth()
+                                                    .clickable(enabled = !isBusy) { editingField = index to "nombre" }
+                                                    .padding(start = 32.dp)
+                                            )
+                                        }
+
+                                        // 🔹 ACCIÓN
+                                        Box(
                                             modifier = Modifier
-                                                .weight(0.25f)
-                                                .focusRequester(focusRequesterCedula)
-                                                .onFocusChanged { if (it.isFocused) editingField = index to "cedula" },
-                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Done),
-                                            keyboardActions = KeyboardActions(onDone = {
-                                                editingField = null
-                                            })
-                                        )
-                                        LaunchedEffect(Unit) { focusRequesterCedula.requestFocus() }
-                                    } else {
-                                        Text(
-                                            text = est.cedula.ifEmpty { "Cédula" },
-                                            color = if (est.cedula.isEmpty()) Color.Gray else Color.Black,
-                                            fontSize = fontSizeEstudiantes,
-                                            modifier = Modifier
-                                                .weight(0.25f)
-                                                .clickable(enabled = !isBusy) { editingField = index to "cedula" }
-                                                .padding(8.dp)
-                                        )
-                                    }
-
-                                    // NOMBRE
-                                    if (isNombreEditing) {
-                                        val focusRequesterNombre = remember { FocusRequester() }
-                                        OutlinedTextField(
-                                            value = est.nombre,
-                                            onValueChange = { nuevo ->
-                                                val filtrado = nuevo.uppercase().filter { it.isLetter() || it.isWhitespace() }
-                                                estudiantes = estudiantes.toMutableList().also { lista ->
-                                                    lista[index] = lista[index].copy(nombre = filtrado)
-                                                }
-                                            },
-                                            label = { Text("Nombre", fontSize = fontSizeEstudiantes) },
-                                            textStyle = LocalTextStyle.current.copy(fontSize = fontSizeEstudiantes),
-                                            singleLine = true,
-                                            enabled = !isBusy,
-                                            modifier = Modifier
-                                                .weight(0.6f)
-                                                .focusRequester(focusRequesterNombre)
-                                                .onFocusChanged { if (it.isFocused) editingField = index to "nombre" },
-                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Done),
-                                            keyboardActions = KeyboardActions(onDone = {
-                                                editingField = null
-                                            })
-                                        )
-                                        LaunchedEffect(Unit) { focusRequesterNombre.requestFocus() }
-                                    } else {
-                                        Text(
-                                            text = est.nombre.ifEmpty { "Nombre" },
-                                            color = if (est.nombre.isEmpty()) Color.Gray else Color.Black,
-                                            fontSize = fontSizeEstudiantes,
-                                            modifier = Modifier
-                                                .weight(0.6f)
-                                                .clickable(enabled = !isBusy) { editingField = index to "nombre" }
-                                                .padding(8.dp)
-                                        )
-                                    }
-
-                                    // ACCIÓN
-                                    val interaction = remember(est.idUnico) { MutableInteractionSource() }
-                                    Box(Modifier.weight(0.15f).wrapContentWidth(Alignment.CenterHorizontally)) {
-                                        IconButton(
-                                            onClick = {
-                                                if (isBusy) return@IconButton
-                                                editingField = null
-                                                estudiantes = estudiantes.toMutableList().also { it.removeAt(index) }
-                                            },
-                                            interactionSource = interaction,
-                                            enabled = !isBusy
+                                                .weight(0.15f)
+                                                .fillMaxWidth(),
+                                            contentAlignment = Alignment.Center
                                         ) {
-                                            Icon(Icons.Default.Delete, "Eliminar estudiante", tint = Color.Red)
+                                            IconButton(
+                                                onClick = {
+                                                    if (isBusy) return@IconButton
+                                                    editingField = null
+                                                    estudiantes = estudiantes.toMutableList().also { it.removeAt(index) }
+                                                },
+                                                enabled = !isBusy
+                                            ) {
+                                                Icon(Icons.Default.Delete, "Eliminar estudiante", tint = Color.Red)
+                                            }
                                         }
                                     }
                                 }
                             }
-                        }
 
-                        Box(
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(top = 16.dp, bottom = 8.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            CustomButton(
-                                text = "Agregar estudiante",
-                                borderColor = ButtonDarkSuccess,
-                                onClick = {
-                                    if (isBusy) return@CustomButton
-                                    val hayVacios = estudiantes.any { it.cedula.isBlank() || it.nombre.isBlank() }
-                                    if (hayVacios) {
-                                        mensajealert(context, "⚠️ No puedes crear un nuevo registro si tienes otro vacío.")
-                                        return@CustomButton
-                                    }
+                            Spacer(Modifier.height(16.dp))
 
-                                    editingField?.let { (index, _) ->
-                                        val est = estudiantes[index]
-                                        if (est.cedula.isNotBlank() && est.nombre.isNotBlank()) {
-                                            estudiantes = estudiantes.toMutableList().also { lista ->
-                                                lista[index] = lista[index].copy(
-                                                    idUnico = generarIdUnicoEstudianteNomina(est.cedula, est.nombre)
-                                                )
+                            // *** ZONA DE ACCIONES AL FONDO ***
+                            Column(
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                // Fila 1: SOLO "Agregar estudiante"
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    CustomButton(
+                                        text = "Agregar estudiante",
+                                        borderColor = ButtonDarkSuccess,
+                                        onClick = {
+                                            if (isBusy) return@CustomButton
+                                            val hayVacios = estudiantes.any { it.cedula.isBlank() || it.nombre.isBlank() }
+                                            if (hayVacios) {
+                                                mensajealert(context, "⚠️ Completa el registro vacío antes de agregar otro.")
+                                                return@CustomButton
                                             }
-                                            editingField = null
-                                        } else {
-                                            mensajealert(context, "⚠️ Completa el estudiante antes de crear otro.")
-                                            return@CustomButton
+                                            showAddDialog = true
                                         }
-                                    }
-
-                                    val nuevoEstudiante = crearEstudianteVacio()
-                                    estudiantes = estudiantes + nuevoEstudiante
-                                    editingField = estudiantes.lastIndex to "cedula"
+                                    )
                                 }
-                            )
+
+                                // Fila 2: DOS COLUMNAS: Guardar | Volver
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(Modifier.weight(1f)) {
+                                        CustomButton(
+                                            text = if (isSaving) "Guardando..." else "Guardar",
+                                            borderColor = ButtonDarkPrimary,
+                                            onClick = { if (!isBusy) guardarAhora() }
+                                        )
+                                    }
+                                    Box(Modifier.weight(1f)) {
+                                        CustomButton(
+                                            text = "Volver",
+                                            borderColor = ButtonDarkGray,
+                                            onClick = { if (!isBusy) onBack() }
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
-            }
 
-            LoadingDotsOverlay(isLoading = isBusy)
+                if (showAddDialog) {
+                    AddEstudianteDialog(
+                        onDismiss = { showAddDialog = false },
+                        onConfirm = { ced, nom ->
+                            val existe = estudiantes.any {
+                                it.cedula.equals(ced, ignoreCase = true) &&
+                                        it.nombre.equals(nom, ignoreCase = true)
+                            }
+                            if (existe) {
+                                mensajealert(context, "⚠️ Ya existe un estudiante con esos datos.")
+                                return@AddEstudianteDialog
+                            }
+                            val nuevo = EstudianteNomina(
+                                idUnico = generarIdUnicoEstudianteNomina(ced, nom),
+                                cedula = ced,
+                                nombre = nom
+                            )
+                            val listaOrdenada = (estudiantes + nuevo)
+                                .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.nombre.trim() })
+
+                            estudiantes = listaOrdenada
+                            showAddDialog = false
+                            scrollToId = nuevo.idUnico
+                        }
+                    )
+                }
+
+                LoadingDotsOverlay(isLoading = isBusy)
+            }
         }
     }
 }
 
 
+////
 fun existeNominaIgualPorCampos(
     institucion: String,
     docente: String,
@@ -894,7 +1095,6 @@ fun cargarEstudiantesDeNomina(
         }
 }
 
-
 fun actualizarEstudiantesDeNomina(
     nominaId: String,
     estudiantes: List<EstudianteNomina>,
@@ -917,8 +1117,8 @@ fun actualizarEstudiantesDeNomina(
 
     val filas = listOf(encabezado) + estudiantes.mapIndexed { index, est ->
         mapOf(
-            "col1" to est.idUnico,                // ✅ ID inmutable (ya existente)
-            "col2" to (index + 1).toString(),     // Nro
+            "col1" to est.idUnico,
+            "col2" to (index + 1).toString(),
             "col3" to est.cedula,
             "col4" to est.nombre
         )
@@ -926,15 +1126,17 @@ fun actualizarEstudiantesDeNomina(
 
     nominaRef.update("tabla", filas)
         .addOnSuccessListener {
-            // Asegurar calificaciones y limpiar huérfanos (firmas iguales a tus funciones actuales)
-            asegurarCalificacionesParaEstudiantes(
+            // 1) Sincroniza calificaciones (crea faltantes y borra huérfanos en TODAS las secciones)
+            syncCalificacionesSeccionesConTabla(
                 nominaId = nominaId,
-                estudiantesActuales = estudiantes
-            ) {
-                limpiarCalificacionesHuerfanas(
-                    nominaId = nominaId,
-                    estudiantesActuales = estudiantes
-                )
+                estudiantesActuales = estudiantes,
+                insumosCount = TablaConfig.INSUMOS_COUNT
+            ) { ok, err ->
+                if (!ok) {
+                    onError(err ?: "No se pudo sincronizar calificaciones")
+                    return@syncCalificacionesSeccionesConTabla
+                }
+                // 2) Limpia asistencias huérfanas (documentos por fecha)
                 limpiarTodasLasAsistenciasHuerfanas(
                     nominaId = nominaId,
                     estudiantesActuales = estudiantes
@@ -1033,21 +1235,45 @@ fun eliminarNominaFirebaseCompleta(
         .collection("nominasEstudiantes")
         .document(nominaId)
 
-    fun borrarSubcoleccionEnLotes(
-        colRef: CollectionReference,
-        onSubDone: () -> Unit,
-        onSubError: (Exception) -> Unit
-    ) {
+    fun borrarColeccionPlano(colRef: CollectionReference, onSubDone: () -> Unit, onSubError: (Exception) -> Unit) {
         colRef.limit(500).get()
             .addOnSuccessListener { snap ->
-                if (snap.isEmpty) {
-                    onSubDone(); return@addOnSuccessListener
-                }
+                if (snap.isEmpty) { onSubDone(); return@addOnSuccessListener }
                 val batch = db.batch()
                 snap.documents.forEach { batch.delete(it.reference) }
                 batch.commit()
-                    .addOnSuccessListener { borrarSubcoleccionEnLotes(colRef, onSubDone, onSubError) }
+                    .addOnSuccessListener { borrarColeccionPlano(colRef, onSubDone, onSubError) }
                     .addOnFailureListener(onSubError)
+            }
+            .addOnFailureListener(onSubError)
+    }
+
+    fun borrarColeccionCalificacionesDeep(califRef: CollectionReference, onSubDone: () -> Unit, onSubError: (Exception) -> Unit) {
+        califRef.get()
+            .addOnSuccessListener { snap ->
+                // Borra subcolecciones "insumos" de cada sección y luego el doc de sección
+                fun procesarSeccion(i: Int) {
+                    if (i >= snap.documents.size) { onSubDone(); return }
+                    val secDoc = snap.documents[i]
+                    if (secDoc.id.startsWith("_")) {
+                        // docs meta; delete directo
+                        secDoc.reference.delete()
+                            .addOnSuccessListener { procesarSeccion(i + 1) }
+                            .addOnFailureListener(onSubError)
+                        return
+                    }
+                    val alumnosCol = secDoc.reference.collection(SUBCOLECCION_ALUMNOS)
+                    borrarColeccionPlano(alumnosCol,
+                        onSubDone = {
+                            // después de limpiar alumnos, borra el doc de la sección
+                            secDoc.reference.delete()
+                                .addOnSuccessListener { procesarSeccion(i + 1) }
+                                .addOnFailureListener(onSubError)
+                        },
+                        onSubError = onSubError
+                    )
+                }
+                procesarSeccion(0)
             }
             .addOnFailureListener(onSubError)
     }
@@ -1060,11 +1286,20 @@ fun eliminarNominaFirebaseCompleta(
             return
         }
         val nombre = subcolecciones[index]
-        borrarSubcoleccionEnLotes(
-            colRef = docRef.collection(nombre),
-            onSubDone = { borrarSiguienteSubcoleccion(index + 1) },
-            onSubError = { e -> onError(e.localizedMessage ?: "Error al borrar subcolección: $nombre") }
-        )
+        val colRef = docRef.collection(nombre)
+        if (nombre == "calificaciones") {
+            borrarColeccionCalificacionesDeep(
+                califRef = colRef,
+                onSubDone = { borrarSiguienteSubcoleccion(index + 1) },
+                onSubError = { e -> onError(e.localizedMessage ?: "Error al borrar calificaciones") }
+            )
+        } else {
+            borrarColeccionPlano(
+                colRef = colRef,
+                onSubDone = { borrarSiguienteSubcoleccion(index + 1) },
+                onSubError = { e -> onError(e.localizedMessage ?: "Error al borrar subcolección: $nombre") }
+            )
+        }
     }
     borrarSiguienteSubcoleccion(0)
 }
@@ -1224,6 +1459,7 @@ fun ModalConfirmarBorrar(
     }
 }
 
+
 @Composable
 fun ModalEditarNomina(
     nomina: NominaResumen,
@@ -1249,12 +1485,11 @@ fun ModalEditarNomina(
         properties = DialogProperties(
             dismissOnBackPress = !isSaving,
             dismissOnClickOutside = !isSaving,
-            usePlatformDefaultWidth = false // ⬅️ Full-screen dialog
+            usePlatformDefaultWidth = false
         )
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
 
-            // Contenedor del modal centrado (ajusta el ancho a gusto)
             Surface(
                 modifier = Modifier
                     .align(Alignment.Center)
@@ -1264,179 +1499,187 @@ fun ModalEditarNomina(
                 shape = RoundedCornerShape(12.dp),
                 color = BackgroundDefault
             ) {
-                Box(modifier = Modifier.fillMaxWidth()) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(BackgroundDefault)
-                            .padding(vertical = 20.dp, horizontal = 20.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(BackgroundDefault)
+                        .padding(vertical = 20.dp, horizontal = 20.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // 🔹 Título
+                    Text(
+                        text = "Editar datos de la nómina",
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = TextDefaultBlack
+                        ),
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.Center
+                    )
+
+                    HorizontalDivider(color = TextDefaultBlack.copy(alpha = 0.2f))
+
+                    // 🔹 Campos
+                    OutlinedTextField(
+                        value = institucion,
+                        onValueChange = { institucion = it },
+                        label = { Text("Institución", color = TextDefaultBlack) },
+                        singleLine = true,
+                        readOnly = isSaving,
+                        textStyle = LocalTextStyle.current.copy(color = TextDefaultBlack),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = docente,
+                        onValueChange = { docente = it },
+                        label = { Text("Docente", color = TextDefaultBlack) },
+                        singleLine = true,
+                        readOnly = isSaving,
+                        textStyle = LocalTextStyle.current.copy(color = TextDefaultBlack),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text(
-                            text = "Editar datos de la nómina",
-                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                            modifier = Modifier.fillMaxWidth(),
-                            textAlign = TextAlign.Center
-                        )
-
-                        HorizontalDivider()
-
                         OutlinedTextField(
-                            value = institucion,
-                            onValueChange = { institucion = it },
-                            label = { Text("Institución") },
+                            value = curso,
+                            onValueChange = { curso = it },
+                            label = { Text("Curso", color = TextDefaultBlack) },
                             singleLine = true,
                             readOnly = isSaving,
-                            modifier = Modifier.fillMaxWidth()
+                            textStyle = LocalTextStyle.current.copy(color = TextDefaultBlack),
+                            modifier = Modifier.weight(1f)
                         )
                         OutlinedTextField(
-                            value = docente,
-                            onValueChange = { docente = it },
-                            label = { Text("Docente") },
+                            value = paralelo,
+                            onValueChange = { paralelo = it.uppercase() },
+                            label = { Text("Paralelo", color = TextDefaultBlack) },
                             singleLine = true,
                             readOnly = isSaving,
-                            modifier = Modifier.fillMaxWidth()
+                            textStyle = LocalTextStyle.current.copy(color = TextDefaultBlack),
+                            modifier = Modifier.weight(1f)
                         )
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            OutlinedTextField(
-                                value = curso,
-                                onValueChange = { curso = it },
-                                label = { Text("Curso") },
-                                singleLine = true,
-                                readOnly = isSaving,
-                                modifier = Modifier.weight(1f)
-                            )
-                            OutlinedTextField(
-                                value = paralelo,
-                                onValueChange = { paralelo = it.uppercase() },
-                                label = { Text("Paralelo") },
-                                singleLine = true,
-                                readOnly = isSaving,
-                                modifier = Modifier.weight(1f)
+                    }
+                    OutlinedTextField(
+                        value = asignatura,
+                        onValueChange = { asignatura = it },
+                        label = { Text("Asignatura", color = TextDefaultBlack) },
+                        singleLine = true,
+                        readOnly = isSaving,
+                        textStyle = LocalTextStyle.current.copy(color = TextDefaultBlack),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = especialidad,
+                        onValueChange = { especialidad = it },
+                        label = { Text("Especialidad", color = TextDefaultBlack) },
+                        singleLine = true,
+                        readOnly = isSaving,
+                        textStyle = LocalTextStyle.current.copy(color = TextDefaultBlack),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = periodo,
+                        onValueChange = { periodo = it },
+                        label = { Text("Periodo", color = TextDefaultBlack) },
+                        singleLine = true,
+                        readOnly = isSaving,
+                        textStyle = LocalTextStyle.current.copy(color = TextDefaultBlack),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(Modifier.height(4.dp))
+                    HorizontalDivider(color = TextDefaultBlack.copy(alpha = 0.2f))
+                    Spacer(Modifier.height(4.dp))
+
+                    // 🔹 Botones (mantienen sus colores originales)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Box(Modifier.weight(1f)) {
+                            CustomButton(
+                                text = if (isSaving) "Guardando..." else "Guardar",
+                                borderColor = ButtonDarkPrimary,
+                                onClick = {
+                                    if (isSaving) return@CustomButton
+
+                                    val vacios = listOf(
+                                        institucion, docente, curso, paralelo, asignatura, periodo
+                                    ).any { it.trim().isEmpty() }
+
+                                    if (vacios) {
+                                        mensajealert(context, "⚠️ Completa todos los campos obligatorios.")
+                                        return@CustomButton
+                                    }
+
+                                    isSaving = true
+                                    val actualizado = nomina.copy(
+                                        institucion = institucion.trim(),
+                                        docente = docente.trim(),
+                                        curso = curso.trim(),
+                                        paralelo = paralelo.trim().uppercase(),
+                                        asignatura = asignatura.trim(),
+                                        especialidad = especialidad.trim(),
+                                        periodo = periodo.trim()
+                                    )
+
+                                    existeNominaIgualPorCampos(
+                                        institucion = actualizado.institucion,
+                                        docente = actualizado.docente,
+                                        curso = actualizado.curso,
+                                        paralelo = actualizado.paralelo,
+                                        asignatura = actualizado.asignatura,
+                                        especialidad = actualizado.especialidad,
+                                        periodo = actualizado.periodo,
+                                        excluirId = nomina.id,
+                                        onResult = { duplicada ->
+                                            if (duplicada) {
+                                                isSaving = false
+                                                mensajealert(context, "⚠️ Ya existe una nómina con esos datos.")
+                                            } else {
+                                                actualizarDatosNomina(
+                                                    nominaId = nomina.id,
+                                                    nominaActualizada = actualizado,
+                                                    onSuccess = {
+                                                        isSaving = false
+                                                        onSaved(actualizado)
+                                                    },
+                                                    onError = { msg ->
+                                                        isSaving = false
+                                                        mensajealert(context, "❌ Error al guardar: $msg")
+                                                    }
+                                                )
+                                            }
+                                        },
+                                        onError = { msg ->
+                                            isSaving = false
+                                            mensajealert(context, "❌ No se pudo verificar duplicados: $msg")
+                                        }
+                                    )
+                                }
                             )
                         }
-                        OutlinedTextField(
-                            value = asignatura,
-                            onValueChange = { asignatura = it },
-                            label = { Text("Asignatura") },
-                            singleLine = true,
-                            readOnly = isSaving,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        OutlinedTextField(
-                            value = especialidad,
-                            onValueChange = { especialidad = it },
-                            label = { Text("Especialidad") },
-                            singleLine = true,
-                            readOnly = isSaving,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        OutlinedTextField(
-                            value = periodo,
-                            onValueChange = { periodo = it },
-                            label = { Text("Periodo") },
-                            singleLine = true,
-                            readOnly = isSaving,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
-                        Spacer(Modifier.height(4.dp))
-                        HorizontalDivider()
-                        Spacer(Modifier.height(4.dp))
-
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Box(Modifier.weight(1f)) {
-                                CustomButton(
-                                    text = if (isSaving) "Guardando..." else "Guardar",
-                                    borderColor = ButtonDarkPrimary,
-                                    onClick = {
-                                        if (isSaving) return@CustomButton
-
-                                        val vacios = listOf(
-                                            institucion, docente, curso, paralelo, asignatura, periodo
-                                        ).any { it.trim().isEmpty() }
-
-                                        if (vacios) {
-                                            mensajealert(context, "⚠️ Completa todos los campos obligatorios.")
-                                            return@CustomButton
-                                        }
-
-                                        isSaving = true
-                                        val actualizado = nomina.copy(
-                                            institucion = institucion.trim(),
-                                            docente = docente.trim(),
-                                            curso = curso.trim(),
-                                            paralelo = paralelo.trim().uppercase(),
-                                            asignatura = asignatura.trim(),
-                                            especialidad = especialidad.trim(),
-                                            periodo = periodo.trim()
-                                        )
-
-                                        existeNominaIgualPorCampos(
-                                            institucion = actualizado.institucion,
-                                            docente = actualizado.docente,
-                                            curso = actualizado.curso,
-                                            paralelo = actualizado.paralelo,
-                                            asignatura = actualizado.asignatura,
-                                            especialidad = actualizado.especialidad,
-                                            periodo = actualizado.periodo,
-                                            excluirId = nomina.id,
-                                            onResult = { duplicada ->
-                                                if (duplicada) {
-                                                    isSaving = false
-                                                    mensajealert(
-                                                        context,
-                                                        "⚠️ Ya existe una nómina con esos datos."
-                                                    )
-                                                } else {
-                                                    actualizarDatosNomina(
-                                                        nominaId = nomina.id,
-                                                        nominaActualizada = actualizado,
-                                                        onSuccess = {
-                                                            isSaving = false
-                                                            onSaved(actualizado)
-                                                        },
-                                                        onError = { msg ->
-                                                            isSaving = false
-                                                            mensajealert(context, "❌ Error al guardar: $msg")
-                                                        }
-                                                    )
-                                                }
-                                            },
-                                            onError = { msg ->
-                                                isSaving = false
-                                                mensajealert(context, "❌ No se pudo verificar duplicados: $msg")
-                                            }
-                                        )
-                                    }
-                                )
-                            }
-                            Box(Modifier.weight(1f)) {
-                                CustomButton(
-                                    text = "Cancelar",
-                                    borderColor = ButtonDarkGray,
-                                    onClick = { if (!isSaving) onDismiss() }
-                                )
-                            }
+                        Box(Modifier.weight(1f)) {
+                            CustomButton(
+                                text = "Cancelar",
+                                borderColor = ButtonDarkGray,
+                                onClick = { if (!isSaving) onDismiss() }
+                            )
                         }
                     }
                 }
             }
 
-            // Overlay FULL-SCREEN (hermano de Surface)
+            // 🔹 Overlay al guardar
             if (isSaving) {
                 Box(
                     modifier = Modifier
                         .matchParentSize()
                         .pointerInput(Unit) {
                             awaitPointerEventScope {
-                                while (true) { awaitPointerEvent() } // consume toques
+                                while (true) { awaitPointerEvent() }
                             }
                         }
                 ) {
@@ -1447,8 +1690,235 @@ fun ModalEditarNomina(
     }
 }
 
+
+@Composable
+private fun AddEstudianteDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (cedula: String, nombre: String) -> Unit
+) {
+    var cedula by remember { mutableStateOf("") }
+    var nombre by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    val focusCedula = remember { FocusRequester() }
+    val focusNombre = remember { FocusRequester() }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            dismissOnBackPress = true,
+            dismissOnClickOutside = false,
+            usePlatformDefaultWidth = false
+        )
+    ) {
+        Surface(
+            tonalElevation = 4.dp,
+            shadowElevation = 6.dp,
+            shape = RoundedCornerShape(12.dp),
+            color = BackgroundDefault,
+            modifier = Modifier
+                .fillMaxWidth(if (isTablet()) 0.5f else 0.94f)
+                .imePadding()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    "Nuevo estudiante",
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = cedula,
+                    onValueChange = { input ->
+                        cedula = input.uppercase().filter { it.isLetterOrDigit() }
+                    },
+                    label = { Text("Cédula") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Ascii,
+                        imeAction = ImeAction.Next
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(focusCedula)
+                )
+
+                OutlinedTextField(
+                    value = nombre,
+                    onValueChange = { input ->
+                        nombre = input.uppercase().filter { it.isLetter() || it.isWhitespace() }
+                    },
+                    label = { Text("Nombre completo") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Text,
+                        imeAction = ImeAction.Done
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onDone = {
+                            if (cedula.isBlank() || nombre.isBlank()) {
+                                error = "Completa cédula y nombre."
+                            } else onConfirm(cedula.trim(), nombre.trim())
+                        }
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(focusNombre)
+                )
+
+                error?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                    Box(Modifier.weight(1f)) {
+                        CustomButton(
+                            text = "Cancelar",
+                            borderColor = ButtonDarkGray,
+                            onClick = onDismiss
+                        )
+                    }
+                    Box(Modifier.weight(1f)) {
+                        CustomButton(
+                            text = "Agregar",
+                            borderColor = ButtonDarkSuccess,
+                            onClick = {
+                                if (cedula.isBlank() || nombre.isBlank()) {
+                                    error = "Completa cédula y nombre."
+                                } else onConfirm(cedula.trim(), nombre.trim())
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) { focusCedula.requestFocus() }
+}
+
+
+
+
+
+
 private fun idUnicoEstudiante(): String =
     "std_" + UUID.randomUUID().toString().replace("-", "").take(16)
 
 fun crearEstudianteVacio(): EstudianteNomina =
     EstudianteNomina(idUnico = idUnicoEstudiante(), cedula = "", nombre = "")
+
+
+// ------------
+
+
+
+fun actualizarEstudiantesDeNominaX(
+    nominaId: String,
+    estudiantes: List<EstudianteNomina>,
+    onSuccess: () -> Unit,
+    onError: (String) -> Unit
+) {
+    val db = FirebaseFirestore.getInstance()
+    val nominaRef = db.collection("gestionAcademica")
+        .document("gestionNominas")
+        .collection("nominasEstudiantes")
+        .document(nominaId)
+
+    // Construir tabla con el nuevo orden (col1=ID, col2=Nro, col3=Cédula, col4=Estudiante)
+    val encabezado = mapOf(
+        "col1" to "ID",
+        "col2" to "Nro",
+        "col3" to "Cédula",
+        "col4" to "Estudiante"
+    )
+
+    val filas = listOf(encabezado) + estudiantes.mapIndexed { index, est ->
+        mapOf(
+            "col1" to est.idUnico,                // ✅ ID inmutable (ya existente)
+            "col2" to (index + 1).toString(),     // Nro
+            "col3" to est.cedula,
+            "col4" to est.nombre
+        )
+    }
+
+    nominaRef.update("tabla", filas)
+        .addOnSuccessListener {
+            // Asegurar calificaciones y limpiar huérfanos (firmas iguales a tus funciones actuales)
+            asegurarCalificacionesParaEstudiantes(
+                nominaId = nominaId,
+                estudiantesActuales = estudiantes
+            ) {
+                limpiarCalificacionesHuerfanas(
+                    nominaId = nominaId,
+                    estudiantesActuales = estudiantes
+                )
+                limpiarTodasLasAsistenciasHuerfanas(
+                    nominaId = nominaId,
+                    estudiantesActuales = estudiantes
+                )
+                onSuccess()
+            }
+        }
+        .addOnFailureListener { e ->
+            onError(e.localizedMessage ?: "Error al actualizar la tabla de la nómina")
+        }
+}
+
+fun eliminarNominaFirebaseCompletaX(
+    nominaId: String,
+    subcolecciones: List<String> = listOf("asistencias", "calificaciones"),
+    onSuccess: () -> Unit,
+    onError: (String) -> Unit
+) {
+    val db = FirebaseFirestore.getInstance()
+    val docRef = db.collection("gestionAcademica")
+        .document("gestionNominas")
+        .collection("nominasEstudiantes")
+        .document(nominaId)
+
+    fun borrarSubcoleccionEnLotes(
+        colRef: CollectionReference,
+        onSubDone: () -> Unit,
+        onSubError: (Exception) -> Unit
+    ) {
+        colRef.limit(500).get()
+            .addOnSuccessListener { snap ->
+                if (snap.isEmpty) {
+                    onSubDone(); return@addOnSuccessListener
+                }
+                val batch = db.batch()
+                snap.documents.forEach { batch.delete(it.reference) }
+                batch.commit()
+                    .addOnSuccessListener { borrarSubcoleccionEnLotes(colRef, onSubDone, onSubError) }
+                    .addOnFailureListener(onSubError)
+            }
+            .addOnFailureListener(onSubError)
+    }
+
+    fun borrarSiguienteSubcoleccion(index: Int) {
+        if (index >= subcolecciones.size) {
+            docRef.delete()
+                .addOnSuccessListener { onSuccess() }
+                .addOnFailureListener { e -> onError(e.localizedMessage ?: "Error al borrar nómina") }
+            return
+        }
+        val nombre = subcolecciones[index]
+        borrarSubcoleccionEnLotes(
+            colRef = docRef.collection(nombre),
+            onSubDone = { borrarSiguienteSubcoleccion(index + 1) },
+            onSubError = { e -> onError(e.localizedMessage ?: "Error al borrar subcolección: $nombre") }
+        )
+    }
+    borrarSiguienteSubcoleccion(0)
+}
+
+
+
+

@@ -5,8 +5,8 @@ import androidx.compose.ui.graphics.Color
 // ======================
 // Colores para fondos de screens
 // ======================
-val BackgroundDefault = Color(0xFFF5F3FF)
-val TextDefaultBlack = Color(0xFF1C1C1C)
+val BackgroundDefault = Color(0xFFECF9FF)
+val TextDefaultBlack = Color(0xFF1C1E2C)
 val TextDefaultWhite = Color(0xFFFFFFFF)
 val BackgroundBar = Color(0xFF4A5565)
 

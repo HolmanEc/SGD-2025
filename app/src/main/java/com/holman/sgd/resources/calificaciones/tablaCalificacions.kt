@@ -12,13 +12,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialogDefaults.shape
 import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
@@ -190,6 +194,9 @@ object TablaBorders {
 
 /* ---------------------- 4) Cálculos ---------------------- */
 object TablaCalculos {
+
+    /////////////////////////////////////////////
+    // DATOS TRIMESTRALES
     const val APROBACION_MIN = 7.0
     const val PESO_FORMATIVA = 0.70
     const val PESO_PROYECTO = 0.15
@@ -276,7 +283,6 @@ object TablaCalculos {
 
     fun calcularDerivados(notas: List<Double?>, insumosCount: Int): Derivados {
 
-        // FORM (70%)
         val actividades = notas.take(insumosCount).filterNotNull()
         val evFormativa = if (actividades.isNotEmpty())
             actividades.average().coerceIn(0.0, 10.0) * PESO_FORMATIVA
@@ -285,15 +291,19 @@ object TablaCalculos {
         val proyecto = notas.getOrNull(insumosCount + 0)?.coerceIn(0.0, 10.0)
         val compProyecto = proyecto?.times(PESO_PROYECTO)
 
-        val evMejorada = evaluacionMejorada(notas, insumosCount) // 0..10 o null
+        val evMejorada = evaluacionMejorada(notas, insumosCount)
         val compEvMejorada = evMejorada?.times(PESO_EVALUACION)
 
         val partesSum = listOfNotNull(compProyecto, compEvMejorada)
         val evSumativa = if (partesSum.isNotEmpty()) partesSum.sum().coerceIn(0.0, 10.0) else null
 
-        val evTrimestral = if (evFormativa != null && evSumativa != null)
-            (evFormativa + evSumativa).coerceIn(0.0, 10.0)
-        else null
+        val evTrimestral = when {
+            evFormativa != null && evSumativa != null ->
+                (evFormativa + evSumativa).coerceIn(0.0, 10.0)
+            evFormativa != null -> evFormativa
+            evSumativa  != null -> evSumativa
+            else -> null
+        }
 
         val promedio = evTrimestral
         val cualitA = cualitativoA(promedio)
@@ -308,13 +318,62 @@ object TablaCalculos {
             cualitativoB = cualitB
         )
     }
+
+
+    /////////////////////////////////////
+    // INFORME
+
+    // --- INFORME ---
+    data class DerivadosInforme(
+        val promFinal: Double?,     // promedio(T1,T2,T3)
+        val promAnual: Double?,     // max(promFinal, supletorio?) o promFinal
+        val cualitativoA: String?,
+        val cualitativoB: String?
+    )
+
+    /**
+     * Espera una lista de 4 posiciones (editables):
+     * 0 -> PromT1, 1 -> PromT2, 2 -> PromT3, 3 -> Supletorio
+     */
+    fun calcularDerivadosInforme(notas: List<Double?>): DerivadosInforme {
+        val t1 = notas.getOrNull(0)?.coerceIn(0.0, 10.0)
+        val t2 = notas.getOrNull(1)?.coerceIn(0.0, 10.0)
+        val t3 = notas.getOrNull(2)?.coerceIn(0.0, 10.0)
+        val suple = notas.getOrNull(3)?.coerceIn(0.0, 10.0)
+
+        val trimestres = listOfNotNull(t1, t2, t3)
+        val promFinal = if (trimestres.isNotEmpty()) trimestres.average().coerceIn(0.0, 10.0) else null
+
+        val promAnual = when {
+            promFinal == null && suple == null -> null
+            promFinal == null -> suple
+            suple == null -> promFinal
+            else -> maxOf(promFinal, suple)
+        }?.coerceIn(0.0, 10.0)
+
+        val cualitA = cualitativoA(promAnual)
+        val cualitB = cualitativoB(promAnual)
+
+        return DerivadosInforme(
+            promFinal = promFinal,
+            promAnual = promAnual,
+            cualitativoA = cualitA,
+            cualitativoB = cualitB
+        )
+    }
+
+
+
+
 }
 
 /* ---------------------- 5) UI Tabla --------------------- */
 object TablaUI {
-   ///
+
+    //////////////////////////////////////////////////
+    // TRIMESTRALES
    @Composable
-   fun TablaCalificaciones(
+   fun TablaTrimestreUI(
        estudiantes: List<TablaConfig.EstudianteCalificacion>,
        nominaId: String,
        onRefresh: () -> Unit,
@@ -356,8 +415,9 @@ object TablaUI {
            modifier = Modifier
                .fillMaxWidth()
                .wrapContentHeight()
-               .clip(RoundedCornerShape(16.dp))
-               .border(1.dp, colores.borde, RoundedCornerShape(16.dp))
+               .shadow(elevation = 4.dp, shape = shape, clip = false)
+               .clip(RoundedCornerShape(8.dp))
+               .border(0.dp, colores.borde, RoundedCornerShape(8.dp))
                .background(colores.fondoContenedor)
        ){
            TablaColors.TablaProvideTextColor {
@@ -805,16 +865,454 @@ object TablaUI {
             }
         }
     }
+
+
+    /////////////////////////////////////////////////
+    // INFORME
+    @Composable
+    fun TablaInformeUI(
+        estudiantes: List<TablaConfig.EstudianteCalificacion>,
+        nominaId: String,
+        onRefresh: () -> Unit,
+        config: TablaConfig.ConfigTabla = TablaConfig.ConfigTabla(),
+        colores: TablaColors.ConfigTablaColores
+    ) {
+        val scrollStateX = rememberScrollState()
+        var editingCell by remember { mutableStateOf<Pair<String, Int>?>(null) }
+
+        // Para informe necesitamos 4 posiciones editables: T1, T2, T3, Suple
+        LaunchedEffect(estudiantes) {
+            estudiantes.forEach { TablaConfig.padNotas(it.notas, 4) }
+        }
+
+        // Bloques/encabezados
+        val headersGrupo1 = listOf("ID", "ESTUDIANTE")
+        val headersTrimestrales = listOf("PROM. T1", "PROM. T2", "PROM. T3") // editables
+        val headersFinales = listOf(
+            "PROM. FINAL",    // calculado
+            "SUPLETORIO",     // editable
+            "PROM. ANUAL",    // calculado
+            "CUALIT. A",      // calculado
+            "CUALIT. B"       // calculado
+        )
+
+        val trimestralesEditableCount = headersTrimestrales.size // 3
+        val supleEditableCount = 1                                // solo supletorio
+        val finalesComputedCount = 4                              // final, anual, cualitA, cualitB
+
+        val totalCols = headersGrupo1.size + headersTrimestrales.size + headersFinales.size
+
+        // Índices visuales
+        val firstEditableIndex = headersGrupo1.size // empieza con PROM T1
+        val firstFinalIndex = firstEditableIndex + trimestralesEditableCount
+        val supleColIndex = firstFinalIndex + 1 // dentro de finales, el 2do es Supletorio (editable)
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .wrapContentHeight()
+                .shadow(elevation = 4.dp, shape = shape, clip = false)
+                .clip(RoundedCornerShape(8.dp))
+                .border(0.dp, colores.borde, RoundedCornerShape(8.dp))
+                .background(colores.fondoContenedor)
+        ) {
+            TablaColors.TablaProvideTextColor {
+                Column {
+                    // Encabezados
+                    EncabezadosInforme(
+                        headersGrupo1 = headersGrupo1,
+                        headersTrimestrales = headersTrimestrales,
+                        headersFinales = headersFinales,
+                        totalCols = totalCols,
+                        config = config,
+                        colores = colores,
+                        scrollStateX = scrollStateX
+                    )
+                    // Cuerpo
+                    CuerpoInforme(
+                        estudiantes = estudiantes,
+                        totalCols = totalCols,
+                        firstEditableIndex = firstEditableIndex,
+                        firstFinalIndex = firstFinalIndex,
+                        supleColIndex = supleColIndex,
+                        config = config,
+                        colores = colores,
+                        scrollStateX = scrollStateX,
+                        editingCell = editingCell,
+                        onEditingCellChange = { editingCell = it }
+                    )
+                }
+            }
+        }
+    }
+    @Composable
+    private fun EncabezadosInforme(
+        headersGrupo1: List<String>,
+        headersTrimestrales: List<String>,
+        headersFinales: List<String>,
+        totalCols: Int,
+        config: TablaConfig.ConfigTabla,
+        colores: TablaColors.ConfigTablaColores,
+        scrollStateX: androidx.compose.foundation.ScrollState
+    ) {
+        Row {
+            Column {
+                // Banda: DATOS PERSONALES
+                Box(
+                    modifier = Modifier
+                        .width((config.colWidthId + config.colWidthNombre).dp)
+                        .height(config.rowHeight.dp)
+                        .background(colores.encabezadoPrincipal)
+                        .let { TablaBorders.run { it.cellBorder(0, 0, 2, totalCols, drawOuterBottom = false, borde = colores.borde) } },
+                    contentAlignment = Alignment.Center
+                ) { Text("DATOS PERSONALES", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
+
+                Row {
+                    headersGrupo1.forEachIndexed { i, h ->
+                        val w = if (h == "ID") config.colWidthId else config.colWidthNombre
+                        Box(
+                            modifier = Modifier
+                                .width(w.dp)
+                                .height(config.rowHeight.dp)
+                                .background(colores.encabezadoSecundario)
+                                .let { TablaBorders.run { it.cellBorder(1, i, 2, totalCols, drawOuterBottom = true, borde = colores.borde) } },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(h, fontWeight = FontWeight.Bold, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                }
+            }
+
+            Row(modifier = Modifier.horizontalScroll(scrollStateX)) {
+                Column {
+                    Row {
+                        // PROMEDIOS TRIMESTRALES
+                        Box(
+                            modifier = Modifier
+                                .width((config.colWidthEvForm * headersTrimestrales.size).dp)
+                                .height(config.rowHeight.dp)
+                                .background(colores.encabezadoPrincipal)
+                                .let { TablaBorders.run { it.cellBorder(0, headersGrupo1.size, 2, totalCols, drawOuterBottom = false, borde = colores.borde) } },
+                            contentAlignment = Alignment.Center
+                        ) { Text("PROMEDIOS TRIMESTRALES", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
+
+                        // RESULTADOS FINALES
+                        Box(
+                            modifier = Modifier
+                                .width((config.colWidthProm * headersFinales.size).dp + 1.dp)
+                                .height(config.rowHeight.dp)
+                                .background(colores.encabezadoFinales)
+                                .let { TablaBorders.run { it.cellBorder(0, headersGrupo1.size + headersTrimestrales.size, 2, totalCols, drawOuterBottom = false, borde = colores.borde) } },
+                            contentAlignment = Alignment.Center
+                        ) { Text("RESULTADOS FINALES", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
+                    }
+
+                    Row {
+                        (headersTrimestrales + headersFinales).forEachIndexed { j, h ->
+                            val width = if (j < headersTrimestrales.size) config.colWidthEvForm else config.colWidthProm
+
+                            val bgColor =
+                                if (j < headersTrimestrales.size) {
+                                    // T1-T3 ahora NO editables
+                                    colores.noEditableFinales
+                                } else {
+                                    val jFin = j - headersTrimestrales.size
+                                    // Dentro de finales, SOLO Supletorio (índice 1) es editable
+                                    if (jFin == 1) colores.encabezadoSecundario else colores.noEditableFinales
+                                }
+
+                            Box(
+                                modifier = Modifier
+                                    .width(width.dp)
+                                    .height(config.rowHeight.dp)
+                                    .background(bgColor)
+                                    .let { TablaBorders.run { it.cellBorder(1, headersGrupo1.size + j, 2, totalCols, drawOuterBottom = true, borde = colores.borde) } },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(h, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    @Composable
+    private fun CuerpoInforme(
+        estudiantes: List<TablaConfig.EstudianteCalificacion>,
+        totalCols: Int,
+        firstEditableIndex: Int,   // primera col editable = PROM T1 (pero ya NO editamos)
+        firstFinalIndex: Int,      // primera col del bloque final = PROM FINAL (calc)
+        supleColIndex: Int,        // índice visual de SUPLETORIO (editable)
+        config: TablaConfig.ConfigTabla,
+        colores: TablaColors.ConfigTablaColores,
+        scrollStateX: androidx.compose.foundation.ScrollState,
+        editingCell: Pair<String, Int>?,
+        onEditingCellChange: (Pair<String, Int>?) -> Unit
+    ) {
+        val keyboard = LocalSoftwareKeyboardController.current
+        val trimestralesCount = 3 // T1-T3
+
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .wrapContentHeight()
+        ) {
+            itemsIndexed(estudiantes) { index, est ->
+                val totalRows = estudiantes.size
+
+                // Aseguro 4 posiciones: T1,T2,T3,Suple
+                val notas = remember(est.idUnico) { est.notas }
+                if (notas.size < 4) TablaConfig.padNotas(notas, 4)
+
+                val derivados = TablaCalculos.calcularDerivadosInforme(notas)
+
+                Row {
+                    // ID
+                    Box(
+                        modifier = Modifier
+                            .width(config.colWidthId.dp)
+                            .height(config.rowHeight.dp)
+                            .background(colores.encabezadoSecundario)
+                            .let { TablaBorders.run { it.cellBorder(index, 0, totalRows, totalCols, drawOuterTop = index != 0, borde = colores.borde) } },
+                        contentAlignment = Alignment.Center
+                    ) { Text(est.numero.toString(), fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+
+                    // ESTUDIANTE
+                    Box(
+                        modifier = Modifier
+                            .width(config.colWidthNombre.dp)
+                            .height(config.rowHeight.dp)
+                            .background(colores.encabezadoSecundario)
+                            .let { TablaBorders.run { it.cellBorder(index, 1, totalRows, totalCols, drawOuterTop = index != 0, borde = colores.borde) } },
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        Text(
+                            est.nombre,
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(start = 4.dp)
+                        )
+                    }
+
+                    // Resto columnas (scroll X)
+                    Row(modifier = Modifier.horizontalScroll(scrollStateX)) {
+
+                        // 1) PROMEDIOS TRIMESTRALES (T1-T3) → NO editables
+                        for (j in 0 until trimestralesCount) {
+                            val colIndex = firstEditableIndex + j
+                            val fondoBase = if (index % 2 == 0) colores.notasPar else colores.notasImpar
+
+                            Box(
+                                modifier = Modifier
+                                    .width(config.colWidthEvForm.dp)
+                                    .height(config.rowHeight.dp)
+                                    .background(fondoBase)
+                                    .let { TablaBorders.run { it.cellBorder(index, colIndex, totalRows, totalCols, drawOuterTop = index != 0, borde = colores.borde) } },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                val nota = notas.getOrNull(j)
+                                Text(
+                                    text = TablaCalculos.formatNota(nota),
+                                    color = TablaColors.colorTextoNota(nota),
+                                    fontSize = 12.sp,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.width(config.colWidthEvForm.dp)
+                                    // ❌ sin clickable: no editable
+                                )
+                            }
+                        }
+
+                        // 2) PROM. FINAL (calculado)
+                        run {
+                            val colIndex = firstFinalIndex + 0
+                            val valor = derivados.promFinal
+                            Box(
+                                modifier = Modifier
+                                    .width(config.colWidthProm.dp)
+                                    .height(config.rowHeight.dp)
+                                    .background(colores.noEditableFinales)
+                                    .let { TablaBorders.run { it.cellBorder(index, colIndex, totalRows, totalCols, drawOuterTop = index != 0, borde = colores.borde) } },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    TablaCalculos.formatNota(valor),
+                                    color = TablaColors.colorTextoNota(valor),
+                                    fontSize = 12.sp,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+
+                        // 3) SUPLETORIO (única editable)
+                        run {
+                            val j = 3 // índice en arreglo de notas (Supletorio)
+                            val colIndex = supleColIndex
+                            val isEditing = editingCell == (est.idUnico to colIndex)
+                            val fondoBase = if (index % 2 == 0) colores.notasPar else colores.notasImpar
+                            val fondo = if (isEditing) colores.editableActivo else fondoBase
+                            val focusRequester = remember { FocusRequester() }
+
+                            Box(
+                                modifier = Modifier
+                                    .width(config.colWidthProm.dp)
+                                    .height(config.rowHeight.dp)
+                                    .background(fondo)
+                                    .let { TablaBorders.run { it.cellBorder(index, colIndex, totalRows, totalCols, drawOuterTop = index != 0, borde = colores.borde) } },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (isEditing) {
+                                    key(est.idUnico to colIndex) {
+                                        val initialTxt = notas.getOrNull(j)?.let { TablaCalculos.formatNota(it) } ?: ""
+                                        var localValue by remember { mutableStateOf(TextFieldValue(initialTxt, TextRange(0, initialTxt.length))) }
+
+                                        LaunchedEffect(Unit) {
+                                            focusRequester.requestFocus()
+                                            keyboard?.show()
+                                        }
+
+                                        BasicTextField(
+                                            value = localValue,
+                                            onValueChange = { nv ->
+                                                localValue = nv
+                                                notas[j] = TablaCalculos.safeParseNota(nv.text)
+                                            },
+                                            modifier = Modifier
+                                                .width(config.colWidthProm.dp)
+                                                .wrapContentHeight(align = Alignment.CenterVertically)
+                                                .focusRequester(focusRequester),
+                                            textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, textAlign = TextAlign.Center),
+                                            singleLine = true,
+                                            // ✅ Cambiamos a NEXT para permitir navegación vertical
+                                            keyboardOptions = KeyboardOptions(
+                                                imeAction = ImeAction.Next,
+                                                keyboardType = KeyboardType.Decimal
+                                            ),
+                                            keyboardActions = KeyboardActions(
+                                                // Avanza a la misma columna (Suple) de la siguiente fila
+                                                onNext = {
+                                                    val currentIndex = estudiantes.indexOfFirst { it.idUnico == est.idUnico }
+                                                    val nextIndex = currentIndex + 1
+                                                    if (nextIndex < estudiantes.size) {
+                                                        val siguienteEst = estudiantes[nextIndex]
+                                                        onEditingCellChange(siguienteEst.idUnico to colIndex)
+                                                    } else {
+                                                        onEditingCellChange(null)
+                                                    }
+                                                },
+                                                // Por si algún teclado envía Done con la tecla Enter física
+                                                onDone = {
+                                                    val currentIndex = estudiantes.indexOfFirst { it.idUnico == est.idUnico }
+                                                    val nextIndex = currentIndex + 1
+                                                    if (nextIndex < estudiantes.size) {
+                                                        val siguienteEst = estudiantes[nextIndex]
+                                                        onEditingCellChange(siguienteEst.idUnico to colIndex)
+                                                    } else {
+                                                        onEditingCellChange(null)
+                                                    }
+                                                }
+                                            )
+                                        )
+                                    }
+                                } else {
+                                    val nota = notas.getOrNull(j)
+                                    Text(
+                                        text = TablaCalculos.formatNota(nota),
+                                        color = TablaColors.colorTextoNota(nota),
+                                        fontSize = 12.sp,
+                                        textAlign = TextAlign.Center,
+                                        modifier = Modifier
+                                            .width(config.colWidthProm.dp)
+                                            .clickable { onEditingCellChange(est.idUnico to colIndex) } // ✅ único editable
+                                    )
+                                }
+                            }
+                        }
+
+
+                        // 4) PROM. ANUAL (calculado)
+                        run {
+                            val colIndex = firstFinalIndex + 2
+                            val valor = derivados.promAnual
+                            Box(
+                                modifier = Modifier
+                                    .width(config.colWidthProm.dp)
+                                    .height(config.rowHeight.dp)
+                                    .background(colores.noEditableFinales)
+                                    .let { TablaBorders.run { it.cellBorder(index, colIndex, totalRows, totalCols, drawOuterTop = index != 0, borde = colores.borde) } },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    TablaCalculos.formatNota(valor),
+                                    color = TablaColors.colorTextoNota(valor),
+                                    fontSize = 12.sp,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+
+                        // 5) CUALIT. A (texto)
+                        run {
+                            val colIndex = firstFinalIndex + 3
+                            val texto = derivados.cualitativoA ?: TablaCalculos.PLACEHOLDER_VACIO
+                            Box(
+                                modifier = Modifier
+                                    .width(config.colWidthProm.dp)
+                                    .height(config.rowHeight.dp)
+                                    .background(colores.noEditableFinales)
+                                    .let { TablaBorders.run { it.cellBorder(index, colIndex, totalRows, totalCols, drawOuterTop = index != 0, borde = colores.borde) } },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(texto, fontSize = 12.sp, textAlign = TextAlign.Center)
+                            }
+                        }
+
+                        // 6) CUALIT. B (texto)
+                        run {
+                            val colIndex = firstFinalIndex + 4
+                            val texto = derivados.cualitativoB ?: TablaCalculos.PLACEHOLDER_VACIO
+                            Box(
+                                modifier = Modifier
+                                    .width(config.colWidthProm.dp)
+                                    .height(config.rowHeight.dp)
+                                    .background(colores.noEditableFinales)
+                                    .let { TablaBorders.run { it.cellBorder(index, colIndex, totalRows, totalCols, drawOuterTop = index != 0, borde = colores.borde) } },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(texto, fontSize = 12.sp, textAlign = TextAlign.Center)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 /* -------------------- 6) API pública -------------------- */
 @Composable
-fun TablaCalificaciones(
+fun TablaTrimetre(
     estudiantes: List<TablaConfig.EstudianteCalificacion>,
     nominaId: String,
     onRefresh: () -> Unit,
     config: TablaConfig.ConfigTabla = TablaConfig.ConfigTabla(),
     colores: TablaColors.ConfigTablaColores
 ) {
-    TablaUI.TablaCalificaciones(estudiantes, nominaId, onRefresh, config, colores)
+    TablaUI.TablaTrimestreUI(estudiantes, nominaId, onRefresh, config, colores)
 }
+
+@Composable
+fun TablaInforme(
+    estudiantes: List<TablaConfig.EstudianteCalificacion>,
+    nominaId: String,
+    onRefresh: () -> Unit,
+    config: TablaConfig.ConfigTabla = TablaConfig.ConfigTabla(),
+    colores: TablaColors.ConfigTablaColores
+) {
+    TablaUI.TablaInformeUI(estudiantes, nominaId, onRefresh, config, colores)
+}
+
+///////////////////////////////////////////////////////
+

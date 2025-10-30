@@ -16,6 +16,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -35,11 +36,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Divider
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -82,9 +81,18 @@ import com.holman.sgd.resources.components.getColorsCardsInicio
 import com.holman.sgd.resources.screens.isTablet
 import com.holman.sgd.ui.theme.*
 import androidx.compose.foundation.Image
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.material.icons.Icons
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import com.holman.sgd.ui.theme.BackgroundDefault
+import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material3.*
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.TextUnit
+
 
 @Composable
 fun FondoScreenDefault() {
@@ -105,7 +113,6 @@ fun FondoScreenDefault() {
         )
     }
 }
-
 
 
 @Composable
@@ -219,91 +226,435 @@ fun CustomButton(
 }
 
 @Composable
-fun NominaCard(
+fun NominaCardAsistencias(
     nomina: NominaResumen,
     index: Int,
     onClick: (Color) -> Unit
 ) {
     val cardColors = getColorsCardsInicio()
-    val backgroundColor = cardColors[index % cardColors.size]
+    val baseColor = cardColors[index % cardColors.size]
     val fontColorCard = TextDefaultBlack
     val shape = RoundedCornerShape(12.dp)
-    val isTablet = isTablet() // 👈 detección de dispositivo
+    val isTablet = isTablet()
+
+    // 🔹 Genera tonos más claro y más oscuro del color base
+    val lightColor = baseColor.copy(alpha = 1f).lighten(0.2f)
+    val darkColor = baseColor.copy(alpha = 1f).darken(0.2f)
 
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp)
-            .shadow(elevation = 4.dp, shape = shape, clip = false)
+            .shadow(elevation = 6.dp, shape = shape, clip = false)
             .clip(shape)
-            .clickable { onClick(backgroundColor) },
+            .clickable { onClick(baseColor) },
         shape = shape,
-        color = backgroundColor,
+        color = Color.Transparent, // el color lo pinta el degradado
         contentColor = fontColorCard
     ) {
-        Column(
+        // 🔹 Fondo con degradado vertical (arriba claro, centro base, abajo oscuro)
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
+                .background(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            lightColor,
+                            baseColor,
+                            darkColor
+                        )
+                    )
+                )
                 .padding(vertical = 30.dp, horizontal = 40.dp)
         ) {
-            Text(
-                text = nomina.institucion,
-                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-            )
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = nomina.institucion,
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                )
 
-            Spacer(Modifier.height(12.dp))
-            HorizontalDivider(
-                thickness = 1.dp,
-                color = LocalContentColor.current.copy(alpha = 0.5f)
-            )
-            Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(12.dp))
+                HorizontalDivider(
+                    thickness = 1.dp,
+                    color = LocalContentColor.current.copy(alpha = 0.5f)
+                )
+                Spacer(Modifier.height(12.dp))
 
-            if (isTablet) {
-                // ✅ Tablet: dos columnas
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
+                if (isTablet) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            InfoItem(Icons.Default.Person, "Docente", nomina.docente)
+                            InfoItem(Icons.Default.Class, "Curso", nomina.curso)
+                            InfoItem(Icons.Default.People, "Paralelo", nomina.paralelo)
+                        }
+                        Spacer(Modifier.width(20.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            InfoItem(Icons.Default.AutoStories, "Asignatura", nomina.asignatura)
+                            InfoItem(Icons.Default.Star, "Especialidad", nomina.especialidad)
+                            InfoItem(Icons.Default.Event, "Periodo", nomina.periodo)
+                        }
+                    }
+                } else {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(1.dp)
+                    ) {
                         InfoItem(Icons.Default.Person, "Docente", nomina.docente)
                         InfoItem(Icons.Default.Class, "Curso", nomina.curso)
                         InfoItem(Icons.Default.People, "Paralelo", nomina.paralelo)
-                    }
-                    Spacer(Modifier.width(20.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        InfoItem(Icons.Default.AutoStories, "Asignatura", nomina.asignatura)
+                        InfoItem(Icons.Default.Book, "Asignatura", nomina.asignatura)
                         InfoItem(Icons.Default.Star, "Especialidad", nomina.especialidad)
                         InfoItem(Icons.Default.Event, "Periodo", nomina.periodo)
                     }
-                }
-            } else {
-                // ✅ Móvil: una sola columna
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(1.dp)
-                ) {
-                    InfoItem(Icons.Default.Person, "Docente", nomina.docente)
-                    InfoItem(Icons.Default.Class, "Curso", nomina.curso)
-                    InfoItem(Icons.Default.People, "Paralelo", nomina.paralelo)
-                    InfoItem(Icons.Default.Book, "Asignatura", nomina.asignatura)
-                    InfoItem(Icons.Default.Star, "Especialidad", nomina.especialidad)
-                    InfoItem(Icons.Default.Event, "Periodo", nomina.periodo)
                 }
             }
         }
     }
 }
 
+// ==========================
+// Modelo
+// ==========================
+enum class TerminoEval { T1, T2, T3, INF }
+
+
+@Composable
+fun TerminoSelectorSegmented(
+    modifier: Modifier = Modifier,
+    selected: TerminoEval? = null,
+    onSelect: ((TerminoEval) -> Unit)? = null,
+    textColor: Color = LocalContentColor.current
+) {
+    var local by remember { mutableStateOf(TerminoEval.T1) }
+    val value = selected ?: local
+    val update: (TerminoEval) -> Unit = { t ->
+        if (onSelect != null) onSelect(t) else local = t
+    }
+
+    val border = Color.White.copy(alpha = 0.28f)
+    val bg = Color.White.copy(alpha = 0.10f)
+    val selectedBg = Color.White.copy(alpha = 0.28f)
+    val unselectedText = textColor.copy(alpha = 0.85f)
+    val selectedText = textColor
+
+    val interaction = remember { MutableInteractionSource() }
+
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(20.dp))
+            .background(bg)
+            .border(1.dp, border, RoundedCornerShape(20.dp))
+            .height(IntrinsicSize.Min)
+            // Consumir taps en el contenedor
+            .clickable(
+                interactionSource = interaction,
+                indication = null
+            ) { /* no-op: evita que llegue al card */ },
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        TerminoSegment(
+            label = "T1",
+            selected = value == TerminoEval.T1,
+            first = true,
+            selectedBg = selectedBg,
+            selectedText = selectedText,
+            unselectedText = unselectedText,
+            onClick = { update(TerminoEval.T1) }
+        )
+        VerticalDivider(
+            color = Color.White.copy(alpha = 0.22f),
+            thickness = 1.dp,
+            modifier = Modifier
+                .fillMaxHeight()
+                .padding(vertical = 6.dp)
+        )
+        TerminoSegment(
+            label = "T2",
+            selected = value == TerminoEval.T2,
+            selectedBg = selectedBg,
+            selectedText = selectedText,
+            unselectedText = unselectedText,
+            onClick = { update(TerminoEval.T2) }
+        )
+        VerticalDivider(
+            color = Color.White.copy(alpha = 0.22f),
+            thickness = 1.dp,
+            modifier = Modifier
+                .fillMaxHeight()
+                .padding(vertical = 6.dp)
+        )
+        TerminoSegment(
+            label = "T3",
+            selected = value == TerminoEval.T3,
+            selectedBg = selectedBg,
+            selectedText = selectedText,
+            unselectedText = unselectedText,
+            onClick = { update(TerminoEval.T3) }
+        )
+        VerticalDivider(
+            color = Color.White.copy(alpha = 0.22f),
+            thickness = 1.dp,
+            modifier = Modifier
+                .fillMaxHeight()
+                .padding(vertical = 6.dp)
+        )
+        TerminoSegment(
+            label = "INF",
+            selected = value == TerminoEval.INF,
+            last = true,
+            selectedBg = selectedBg,
+            selectedText = selectedText,
+            unselectedText = unselectedText,
+            onClick = { update(TerminoEval.INF) }
+        )
+    }
+}
+
+@Composable
+private fun TerminoSegment(
+    label: String,
+    selected: Boolean,
+    first: Boolean = false,
+    last: Boolean = false,
+    selectedBg: Color,
+    selectedText: Color,
+    unselectedText: Color,
+    onClick: () -> Unit
+) {
+    val shape = when {
+        first -> RoundedCornerShape(topStart = 20.dp, bottomStart = 20.dp)
+        last -> RoundedCornerShape(topEnd = 20.dp, bottomEnd = 20.dp)
+        else -> RoundedCornerShape(0.dp)
+    }
+    val interaction = remember { MutableInteractionSource() }
+
+    Box(
+        modifier = Modifier
+            .clip(shape)
+            .background(if (selected) selectedBg else Color.Transparent)
+            .clickable(
+                interactionSource = interaction,
+                indication = null
+            ) { onClick() }
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+    ) {
+        Text(
+            text = label,
+            color = if (selected) selectedText else unselectedText,
+            fontSize = 13.sp,
+            letterSpacing = 0.2.sp
+        )
+    }
+}
+
+@Composable
+fun NominaCardCalificaciones(
+    nomina: NominaResumen,
+    index: Int,
+    onClick: (Color) -> Unit,
+    termSelected: TerminoEval? = null,
+    onTermChange: ((TerminoEval) -> Unit)? = null
+) {
+    val cardColors = getColorsCardsInicio()
+    val baseColor = cardColors[index % cardColors.size]
+    val fontColorCard = TextDefaultBlack
+    val shape = RoundedCornerShape(12.dp)
+    val isTablet = isTablet()
+
+    // Degradado limpio sin extensiones extra
+    val lightColor = androidx.compose.ui.graphics.lerp(Color.White, baseColor, 0.8f)
+    val darkColor = androidx.compose.ui.graphics.lerp(baseColor, Color.Black, 0.2f)
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .shadow(elevation = 6.dp, shape = shape, clip = false)
+            .clip(shape)
+            .clickable { onClick(baseColor) },
+        shape = shape,
+        color = Color.Transparent,
+        contentColor = fontColorCard
+    ) {
+        Box(
+            modifier = Modifier
+                .background(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(lightColor, baseColor, darkColor)
+                    )
+                )
+                .padding(vertical = 30.dp, horizontal = 40.dp)
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+
+                // Título + selector
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = nomina.institucion,
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                        modifier = Modifier.weight(1f)
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    TerminoSelectorSegmented(
+                        selected = termSelected,
+                        onSelect = onTermChange,
+                        textColor = LocalContentColor.current
+                    )
+                }
+
+                Spacer(Modifier.height(12.dp))
+                HorizontalDivider(
+                    thickness = 1.dp,
+                    color = LocalContentColor.current.copy(alpha = 0.5f)
+                )
+                Spacer(Modifier.height(12.dp))
+
+                if (isTablet) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            InfoItem(Icons.Default.Person, "Docente", nomina.docente)
+                            InfoItem(Icons.Default.Class, "Curso", nomina.curso)
+                            InfoItem(Icons.Default.People, "Paralelo", nomina.paralelo)
+                        }
+                        Spacer(Modifier.width(20.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            InfoItem(Icons.Default.AutoStories, "Asignatura", nomina.asignatura)
+                            InfoItem(Icons.Default.Star, "Especialidad", nomina.especialidad)
+                            InfoItem(Icons.Default.Event, "Periodo", nomina.periodo)
+                        }
+                    }
+                } else {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(1.dp)
+                    ) {
+                        InfoItem(Icons.Default.Person, "Docente", nomina.docente)
+                        InfoItem(Icons.Default.Class, "Curso", nomina.curso)
+                        InfoItem(Icons.Default.People, "Paralelo", nomina.paralelo)
+                        InfoItem(Icons.Default.Book, "Asignatura", nomina.asignatura)
+                        InfoItem(Icons.Default.Star, "Especialidad", nomina.especialidad)
+                        InfoItem(Icons.Default.Event, "Periodo", nomina.periodo)
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+///
+@Composable
+fun TituloScreenNominas(
+    texto: String,
+    modifier: Modifier = Modifier,
+    iconSize: Dp = 26.dp,
+    color: Color = TextDefaultBlack,
+    fontSize: TextUnit = 22.sp,
+    fontWeight: FontWeight = FontWeight.Bold
+) {
+    // 🔹 Lista de posibles íconos según palabra clave
+    val iconMap = mapOf(
+        "formulario" to Icons.Default.Description,
+        "asistencia" to Icons.Default.CheckCircle,
+        "nomina" to Icons.Default.People,
+        "calificacion" to Icons.Default.Star,
+        "nota" to Icons.Default.StarHalf,
+        "estudiante" to Icons.Default.School,
+        "curso" to Icons.Default.MenuBook,
+        "docente" to Icons.Default.Person,
+        "informe" to Icons.Default.Assessment,
+        "gestión" to Icons.Default.Summarize,
+        "configuracion" to Icons.Default.Settings,
+        "ajuste" to Icons.Default.Tune,
+        "exportar" to Icons.Default.FileUpload,
+        "importar" to Icons.Default.FileDownload,
+        "reporte" to Icons.Default.ReceiptLong,
+        "lista" to Icons.Default.List,
+        "tabla" to Icons.Default.TableChart,
+        "registro" to Icons.Default.EditNote
+    )
+
+    // 🔹 Buscar si el texto contiene alguna palabra clave del mapa
+    val lowerText = texto.lowercase()
+    val matchedIcon = iconMap.entries.firstOrNull { (key, _) ->
+        lowerText.contains(key)
+    }?.value ?: Icons.Default.List // ícono por defecto
+
+    // 🔹 UI principal
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(top = 16.dp, bottom = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                imageVector = matchedIcon,
+                contentDescription = texto,
+                tint = color,
+                modifier = Modifier.size(iconSize)
+            )
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            Text(
+                text = texto,
+                fontSize = fontSize,
+                fontWeight = fontWeight,
+                color = color
+            )
+        }
+    }
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 16.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Divider(
+            color = TextDefaultBlack.copy(alpha = 0.3f),
+            thickness = 1.dp,
+            modifier = Modifier
+                .fillMaxWidth(1f) // 🔹 opcional: ancho del divisor (60% del ancho total)
+        )
+    }
+
+}
+
+
+/////
 @Composable
 fun NominaHeaderCard(
     nomina: NominaResumen,
     backgroundColor: Color,
+    termino: TerminoEval? = null,
     onClick: (() -> Unit)? = null
 ) {
     val shape = RoundedCornerShape(12.dp)
     val fontColorCard = TextDefaultBlack
 
-    val clickableMod = if (onClick != null) Modifier.clip(shape).clickable { onClick() } else Modifier
+    // Base + variaciones para el degradado (igual que en NominaCardAsistencias)
+    val baseColor = backgroundColor
+    val lightColor = baseColor.copy(alpha = 1f).lighten(0.2f)
+    val darkColor  = baseColor.copy(alpha = 1f).darken(0.2f)
+
+    // Si hay onClick, hace el clip + clickable; si no, lo omite.
+    val clickableMod =
+        if (onClick != null) Modifier
+            .clip(shape)
+            .clickable { onClick() }
+        else Modifier
 
     Surface(
         modifier = Modifier
@@ -311,36 +662,88 @@ fun NominaHeaderCard(
             .shadow(elevation = 4.dp, shape = shape, clip = false)
             .then(clickableMod),
         shape = shape,
-        color = backgroundColor,
+        // IMPORTANTE: el color de Surface pasa a transparente; el fondo lo pinta el degradado
+        color = Color.Transparent,
         contentColor = fontColorCard
     ) {
-        Column(
+        // Fondo degradado vertical (arriba claro, centro base, abajo oscuro)
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 30.dp, horizontal = 40.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                Text(
-                    text = nomina.institucion,
-                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
+                .background(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            lightColor,
+                            baseColor,
+                            darkColor
+                        )
+                    )
                 )
-            }
-            HorizontalDivider(thickness = 1.dp, color = LocalContentColor.current.copy(alpha = 0.5f))
-            Row(
+                .padding(vertical = 30.dp, horizontal = 40.dp)
+        ) {
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    InfoItem(Icons.Default.AutoStories, "Asignatura", nomina.asignatura)
-                    InfoItem(Icons.Default.Person, "Docente", nomina.docente)
+                // --- Título principal ---
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = nomina.institucion,
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
-                Spacer(Modifier.width(20.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    InfoItem(Icons.Default.Class, "Curso", "${nomina.curso} ${nomina.paralelo} - ${nomina.especialidad}")
-                    InfoItem(Icons.Default.Event, "Periodo", nomina.periodo)
+
+                // --- Línea con el término actual, si aplica ---
+                if (termino != null) {
+                    val label = when (termino) {
+                        TerminoEval.T1  -> "PRIMER TRIMESTRE"
+                        TerminoEval.T2  -> "SEGUNDO TRIMESTRE"
+                        TerminoEval.T3  -> "TERCER TRIMESTRE"
+                        TerminoEval.INF -> "INFORME ANUAL"
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = label,
+                            style = MaterialTheme.typography.bodyLarge.copy(
+                                fontWeight = FontWeight.Medium,
+                                color = LocalContentColor.current.copy(alpha = 0.9f)
+                            ),
+                            textAlign = TextAlign.Center
+                        )
+                    }
+
+                    HorizontalDivider(
+                        thickness = 1.dp,
+                        color = LocalContentColor.current.copy(alpha = 0.5f)
+                    )
+                }
+
+                // --- Datos base ---
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        InfoItem(Icons.Default.AutoStories, "Asignatura", nomina.asignatura)
+                        InfoItem(Icons.Default.Person, "Docente", nomina.docente)
+                    }
+                    Spacer(Modifier.width(20.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        InfoItem(
+                            Icons.Default.Class,
+                            "Curso",
+                            "${nomina.curso} ${nomina.paralelo} - ${nomina.especialidad}"
+                        )
+                        InfoItem(Icons.Default.Event, "Periodo", nomina.periodo)
+                    }
                 }
             }
         }
@@ -413,7 +816,10 @@ fun NominaReviewCard(
                 }
             }
 
-            HorizontalDivider(thickness = 1.dp, color = LocalContentColor.current.copy(alpha = 0.5f))
+            HorizontalDivider(
+                thickness = 1.dp,
+                color = LocalContentColor.current.copy(alpha = 0.5f)
+            )
             Spacer(Modifier.height(12.dp))
 
             Column(
@@ -518,7 +924,10 @@ fun LoadingDotsOverlay(
                     modifier = Modifier
                         .size(16.dp)
                         .offset(y = offsetY.dp)
-                        .background(colorPuntos, shape = CircleShape) // o MaterialTheme.colorScheme.primary
+                        .background(
+                            colorPuntos,
+                            shape = CircleShape
+                        ) // o MaterialTheme.colorScheme.primary
                 )
             }
         }
@@ -552,8 +961,16 @@ fun RadialLoader() {
                     drawCircle(Color.White, radius = 8.dp.toPx(), center = center)
                     drawCircle(Color.White, radius = 4.dp.toPx(), center = Offset(center.x, 0f))
                     drawCircle(Color.White, radius = 4.dp.toPx(), center = Offset(0f, center.y))
-                    drawCircle(Color.White, radius = 4.dp.toPx(), center = Offset(size.width, center.y))
-                    drawCircle(Color.White, radius = 4.dp.toPx(), center = Offset(center.x, size.height))
+                    drawCircle(
+                        Color.White,
+                        radius = 4.dp.toPx(),
+                        center = Offset(size.width, center.y)
+                    )
+                    drawCircle(
+                        Color.White,
+                        radius = 4.dp.toPx(),
+                        center = Offset(center.x, size.height)
+                    )
                 }
         )
 
@@ -577,8 +994,16 @@ fun RadialLoader() {
                     drawCircle(Color.White, radius = 5.dp.toPx(), center = center)
                     drawCircle(Color.White, radius = 2.5.dp.toPx(), center = Offset(center.x, 0f))
                     drawCircle(Color.White, radius = 2.5.dp.toPx(), center = Offset(0f, center.y))
-                    drawCircle(Color.White, radius = 2.5.dp.toPx(), center = Offset(size.width, center.y))
-                    drawCircle(Color.White, radius = 2.5.dp.toPx(), center = Offset(center.x, size.height))
+                    drawCircle(
+                        Color.White,
+                        radius = 2.5.dp.toPx(),
+                        center = Offset(size.width, center.y)
+                    )
+                    drawCircle(
+                        Color.White,
+                        radius = 2.5.dp.toPx(),
+                        center = Offset(center.x, size.height)
+                    )
                 }
         )
     }
@@ -674,7 +1099,6 @@ fun FloatingExportButton(
 }
 
 
-
 @Composable
 fun VistaPreviaTablaExcel(
     modifier: Modifier = Modifier.fillMaxSize()
@@ -683,17 +1107,15 @@ fun VistaPreviaTablaExcel(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Título
         Text(
             text = "Vista previa de la nómina",
             style = MaterialTheme.typography.titleMedium.copy(
                 fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f)
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
             ),
             modifier = Modifier.padding(bottom = 8.dp)
         )
 
-        // Subtítulo
         Text(
             text = "Cargue un archivo Excel (.xlsx) para ver aquí la lista de estudiantes.",
             style = MaterialTheme.typography.bodyMedium.copy(
@@ -703,11 +1125,11 @@ fun VistaPreviaTablaExcel(
             modifier = Modifier.padding(bottom = 20.dp)
         )
 
-        // Tabla fantasma — ocupa todo el alto restante
         Column(
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f, fill = true)
         ) {
-            // Encabezado (3 columnas)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -727,7 +1149,6 @@ fun VistaPreviaTablaExcel(
                 }
             }
 
-            // Filas fantasma distribuidas para llenar el espacio
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -749,22 +1170,26 @@ fun VistaPreviaTablaExcel(
                                     .clip(RoundedCornerShape(4.dp))
                                     .background(FondoGris.copy(alpha = 0.2f))
                             )
-                            Spacer(modifier = Modifier.padding(horizontal = 6.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
                         }
                     }
-                    HorizontalDivider(thickness = 0.5.dp, color = BordeGris.copy(alpha = 0.3f))
+                    HorizontalDivider(
+                        thickness = 0.5.dp,
+                        color = BordeGris.copy(alpha = 0.3f)
+                    )
                 }
             }
         }
 
-        // Pie sutil
         Text(
             text = "Esta tabla se actualizará automáticamente al cargar la nómina.",
             style = MaterialTheme.typography.bodySmall.copy(
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
             ),
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-            modifier = Modifier.padding(top = 12.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 12.dp)
         )
     }
 }
@@ -803,6 +1228,24 @@ fun mensajealert(context: Context, message: String) {
     toast.show()
 }
 
+
+fun Color.lighten(factor: Float): Color {
+    return Color(
+        red = red + (1 - red) * factor,
+        green = green + (1 - green) * factor,
+        blue = blue + (1 - blue) * factor,
+        alpha = alpha
+    )
+}
+
+fun Color.darken(factor: Float): Color {
+    return Color(
+        red = red * (1 - factor),
+        green = green * (1 - factor),
+        blue = blue * (1 - factor),
+        alpha = alpha
+    )
+}
 
 
 ////////////////////
@@ -905,7 +1348,7 @@ fun CustomButtonokokokoko(
             fontSize = 12.sp,
             fontWeight = FontWeight.Bold,
             letterSpacing = 2.sp,
-            color = if (pressed) TextoBotonClaro  else borderColor
+            color = if (pressed) TextoBotonClaro else borderColor
         )
     }
 }

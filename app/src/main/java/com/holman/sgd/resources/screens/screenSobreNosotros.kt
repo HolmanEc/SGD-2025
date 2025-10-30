@@ -18,6 +18,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.holman.sgd.R
+import com.holman.sgd.resources.components.ContenedorPrincipal
 import com.holman.sgd.ui.theme.BackgroundDefault
 import com.holman.sgd.ui.theme.ButtonDarkGray
 
@@ -34,14 +35,14 @@ fun About(onNavigateBack: (() -> Unit)? = null) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(32.dp)
+                .padding(ContenedorPrincipal)
         )
         {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(bottom = 60.dp),
+                    .verticalScroll(rememberScrollState()),
+                    //.padding(bottom = 60.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 // Logo
