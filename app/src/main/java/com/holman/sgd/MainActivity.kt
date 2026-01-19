@@ -237,7 +237,7 @@ fun NavigationHost(navController: NavHostController) {
         composable(Screen.nominas.route) { Nominas(navController = navController) }
         composable(Screen.calificaciones.route) { Calificaciones(navController = navController) }
         composable(Screen.asistencias.route) { Asistencias(navController = navController) }
-        composable(Screen.tutoria.route) { Tutoria() }
+        composable(Screen.tutoria.route) { Tutoria(navController = navController) }
         composable(Screen.documentos.route) { Documentos() }
         composable(Screen.varios.route) { Varios() }
         composable(Screen.config.route) { Configuracion() }

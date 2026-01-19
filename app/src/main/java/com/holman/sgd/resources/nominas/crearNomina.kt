@@ -63,11 +63,13 @@ import com.holman.sgd.ui.theme.*
 import com.google.firebase.firestore.DocumentReference
 import com.holman.sgd.resources.FondoScreenDefault
 import com.holman.sgd.resources.LoadingDotsOverlay
-import com.holman.sgd.resources.TituloScreenNominas
+import com.holman.sgd.resources.TituloGeneralScreens
 import com.holman.sgd.resources.VistaPreviaTablaExcel
 import com.holman.sgd.resources.components.ContenedorPrincipal
+import org.apache.poi.ss.usermodel.DateUtil
+import java.text.SimpleDateFormat
 import java.util.UUID
-
+import org.apache.poi.ss.usermodel.*
 
 @Composable
 fun CrearNomina(
@@ -115,7 +117,7 @@ fun CrearNomina(
                     .fillMaxSize()
                     .padding(ContenedorPrincipal)
             ) {
-                TituloScreenNominas(texto = "Formulario para crear nómina")
+                TituloGeneralScreens(texto = "Formulario para crear nómina")
                 Spacer(modifier = Modifier.width(8.dp))
 
                 Box(
@@ -205,9 +207,6 @@ fun CrearNomina(
                     }
                 }
 
-
-
-
                 Spacer(modifier = Modifier.height(12.dp))
 
                 // 🔹 Vista previa de tabla o carga
@@ -220,7 +219,8 @@ fun CrearNomina(
                 {
                     if (datosTabla.isEmpty() && datos.isNotEmpty()) datosTabla = datos
 
-                    if (datosTabla.isNotEmpty()) {
+                    if (datosTabla.isNotEmpty())
+                    {
                         Column(
                             modifier = Modifier
                                 .fillMaxSize()
@@ -231,6 +231,11 @@ fun CrearNomina(
                             val encabezados = datosTabla[0]
                             val filasDatos = datosTabla.drop(1)
 
+                            // Control de ancho de cada columna
+                            val pesosColumnas = generarPesos(encabezados.size)
+
+
+                            // Encabezados
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -239,28 +244,37 @@ fun CrearNomina(
                                     .padding(6.dp)
                             ) {
                                 encabezados.forEachIndexed { index, titulo ->
-                                    val peso = when (index) { 0, 1 -> 1f else -> 3f }
+                                    val peso = pesosColumnas.getOrElse(index) { 0.1f }
                                     Text(
                                         text = titulo,
-                                        modifier = Modifier.weight(peso).padding(4.dp),
+                                        modifier = Modifier
+                                            .weight(peso)
+                                            .padding(4.dp),
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = TextoClaroLight // se mantiene claro por contraste
+                                        color = TextoClaroLight
                                     )
                                 }
                             }
 
-                            filasDatos.forEach { fila ->
+                            // Filas de datos con fondo tipo "zebra"
+                            filasDatos.forEachIndexed { idx, fila ->
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
+                                        .background(
+                                            if (idx % 2 == 0) BackgroundDefault
+                                            else BackgroundDefault.copy(alpha = 0.6f)
+                                        )
                                         .padding(horizontal = 4.dp, vertical = 6.dp)
                                 ) {
                                     fila.forEachIndexed { index, celda ->
-                                        val peso = when (index) { 0, 1 -> 1f else -> 3f }
+                                        val peso = pesosColumnas.getOrElse(index) { 0.1f }
                                         Text(
                                             text = celda,
-                                            modifier = Modifier.weight(peso).padding(4.dp),
+                                            modifier = Modifier
+                                                .weight(peso)
+                                                .padding(4.dp),
                                             fontSize = 12.sp,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
@@ -268,8 +282,11 @@ fun CrearNomina(
                                     }
                                 }
                             }
+
                         }
-                    } else {
+                    }
+                    else
+                    {
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
@@ -399,18 +416,22 @@ fun guardarNominaEnFirestore(
     onError: (String) -> Unit
 ) {
     val db = FirebaseFirestore.getInstance()
-
     val rutaNominas = db.collection("gestionAcademica")
         .document("gestionNominas")
         .collection("nominasEstudiantes")
 
     if (datos.isEmpty()) {
-        onError("No hay datos para guardar")
-        return
+        onError("No hay datos para guardar"); return
     }
+
+    val encabezadosExcel = datos.firstOrNull().orEmpty()
     val filasExcel = if (datos.size > 1) datos.drop(1) else emptyList()
 
-    // 1) Verificar duplicados
+    if (filasExcel.isEmpty()) {
+        onError("La hoja está vacía (solo encabezado)"); return
+    }
+
+    // 🔹 Verificar duplicados antes de guardar
     rutaNominas
         .whereEqualTo("institucion", institucion)
         .whereEqualTo("docente", docente)
@@ -421,36 +442,40 @@ fun guardarNominaEnFirestore(
         .whereEqualTo("periodo", periodo)
         .get()
         .addOnSuccessListener { snap ->
-            if (!snap.isEmpty) {
-                onDuplicate(); return@addOnSuccessListener
+            if (!snap.isEmpty) { onDuplicate(); return@addOnSuccessListener }
+
+            // ────────────────────────────────────────────────
+            // Estructura Firestore:
+            // col1 = "ID" (generado)
+            // col2 = "NRO" (valor original del Excel)
+            // col3.. = demás columnas del Excel
+            // ────────────────────────────────────────────────
+            val totalCols = encabezadosExcel.size + 1 // +1 por la nueva col "ID"
+            fun keyCol(i: Int) = "col$i"
+
+            val encabezadoFirestore = buildMap<String, Any> {
+                put("col1", "ID")  // ID generado por el sistema
+                put("col2", "NRO") // ID/Número del Excel
+                for (i in 1 until encabezadosExcel.size) {
+                    put("col${i + 2}", encabezadosExcel[i])
+                }
             }
 
-            // 2) Construir tabla con ID aleatorio por estudiante
-            val encabezado = mapOf(
-                "col1" to "ID",
-                "col2" to "Nro",
-                "col3" to "Cédula",
-                "col4" to "Estudiante"
-            )
             val filasTabla = mutableListOf<Map<String, Any>>()
-            filasTabla += encabezado
+            filasTabla += encabezadoFirestore
 
             filasExcel.forEachIndexed { index, fila ->
-                val nro    = (fila.getOrNull(0) ?: (index + 1).toString()).toString().trim()
-                val cedula = (fila.getOrNull(1) ?: "").toString().trim()
-                val nombre = (fila.getOrNull(2) ?: "").toString().trim()
-
                 val idUnico = idUnicoEstudiante()
-
-                filasTabla += mapOf(
-                    "col1" to idUnico,
-                    "col2" to nro,
-                    "col3" to cedula,
-                    "col4" to nombre
-                )
+                val obj = buildMap<String, Any> {
+                    put("col1", idUnico)                              // ID generado
+                    put("col2", (fila.getOrNull(0) ?: "").toString()) // NRO original
+                    for (i in 1 until encabezadosExcel.size) {
+                        put("col${i + 2}", (fila.getOrNull(i) ?: "").toString().trim())
+                    }
+                }
+                filasTabla += obj
             }
 
-            // 3) Documento de nómina
             val nomina = hashMapOf(
                 "institucion" to institucion,
                 "docente" to docente,
@@ -463,9 +488,7 @@ fun guardarNominaEnFirestore(
                 "timestamp" to System.currentTimeMillis()
             )
 
-            // 4) Guardar y crear estructura de 3 trimestres
-            rutaNominas
-                .add(nomina)
+            rutaNominas.add(nomina)
                 .addOnSuccessListener { docRef ->
                     docRef.update("idNomina", docRef.id)
                         .addOnFailureListener { /* no bloqueante */ }
@@ -488,6 +511,10 @@ fun guardarNominaEnFirestore(
         }
 }
 
+
+
+
+///
 private fun inicializarCalificacionesPorTrimestres(
     nominaDocRef: DocumentReference,
     insumosCount: Int,
@@ -745,40 +772,71 @@ fun cargarListadoFirestore(
 
 
 fun procesarArchivoExcel(context: Context, uri: Uri): List<List<String>> {
-    val datos = mutableListOf<List<String>>()
-    val formatter = DataFormatter()  // ← Agrega esto al inicio
+    val filas = mutableListOf<List<String>>()
+    val formatter = DataFormatter()
+    val sdf = SimpleDateFormat("yyyy-MM-dd")
 
     try {
-        context.contentResolver.openInputStream(uri)?.use { inputStream ->
-            val workbook = XSSFWorkbook(inputStream)
-            val sheet = workbook.getSheetAt(0)
+        context.contentResolver.openInputStream(uri)?.use { input ->
+            XSSFWorkbook(input).use { wb ->
+                val sheet = wb.getSheetAt(0)
 
-            for (row in sheet) {
-                val fila = mutableListOf<String>()
-
-                for ((i, cell) in row.withIndex()) {
-                    val valor = when (i) {
-                        0 -> if (cell.cellType == CellType.NUMERIC) cell.numericCellValue.toLong().toString()
-                        else formatter.formatCellValue(cell)
-
-                        1, 2 -> formatter.formatCellValue(cell)
-
-                        else -> formatter.formatCellValue(cell)
-                    }
-                    fila.add(valor)
+                // 1) Determinar cuántas columnas reales tiene la hoja
+                var maxCols = 0
+                for (r in sheet) {
+                    maxCols = maxOf(maxCols, r.lastCellNum.toInt().coerceAtLeast(0))
                 }
-                datos.add(fila)
+
+                // 2) Recorrer filas respetando celdas vacías
+                for (row in sheet) {
+                    val fila = MutableList(maxCols) { "" }
+
+                    for (col in 0 until maxCols) {
+                        val cell = row.getCell(col, Row.MissingCellPolicy.RETURN_BLANK_AS_NULL)
+                        val valor = when (cell?.cellType) {
+                            CellType.STRING  -> cell.stringCellValue
+                            CellType.NUMERIC -> {
+                                if (DateUtil.isCellDateFormatted(cell)) {
+                                    sdf.format(cell.dateCellValue)
+                                } else {
+                                    val d = cell.numericCellValue
+                                    if (d % 1.0 == 0.0) d.toLong().toString() else d.toString()
+                                }
+                            }
+                            CellType.BOOLEAN -> cell.booleanCellValue.toString()
+                            CellType.FORMULA -> formatter.formatCellValue(cell) // eval simple
+                            else -> ""
+                        }.trim()
+
+                        fila[col] = valor
+                    }
+
+                    // Omitir filas totalmente vacías
+                    if (fila.any { it.isNotEmpty() }) filas += fila
+                }
             }
-            workbook.close()
-        } ?: run {
-            mensajealert(context, "No se pudo abrir el archivo")
-        }
+        } ?: mensajealert(context, "No se pudo abrir el archivo")
     } catch (e: Exception) {
         mensajealert(context, "Error al leer Excel: ${e.message}")
     }
-    return datos
+
+    return filas
 }
+
+
+
 
 private fun idUnicoEstudiante(): String {
     return "std_" + UUID.randomUUID().toString().replace("-", "").take(16)
+}
+
+
+fun generarPesos(numCols: Int): List<Float> {
+    val base = listOf(5f, 15f, 35f, 30f, 15f) // tu perfil
+    return if (numCols <= base.size) base.take(numCols).map { it / 100f }
+    else {
+        val restante = (100f - base.sum()).coerceAtLeast(0f)
+        val extra = if (numCols > base.size) restante / (numCols - base.size) else 0f
+        (base + List(numCols - base.size) { extra }).map { it / 100f }
+    }
 }

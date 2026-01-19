@@ -53,7 +53,7 @@ import androidx.compose.ui.window.Dialog
 import com.google.firebase.firestore.FirebaseFirestore
 import com.holman.sgd.resources.CustomButton
 import com.holman.sgd.resources.FondoScreenDefault
-import com.holman.sgd.resources.TituloScreenNominas
+import com.holman.sgd.resources.TituloGeneralScreens
 import com.holman.sgd.resources.components.ContenedorPrincipal
 import com.holman.sgd.resources.mensajealert
 import com.holman.sgd.resources.screens.isTablet
@@ -109,7 +109,7 @@ fun GestionAcademicaScreen(
                             //.padding(16.dp)
                     ) {
                         // 🔹 Título superior
-                        TituloScreenNominas(texto = "Gestión Académica")
+                        TituloGeneralScreens(texto = "Gestión Académica")
                         Spacer(modifier = Modifier.width(8.dp))
 
                         // 🔹 Carrusel de tarjetas (LazyRow)

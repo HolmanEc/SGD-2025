@@ -21,12 +21,14 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.navigation.NavHostController
 import com.holman.sgd.resources.CustomButton
 import com.holman.sgd.resources.FondoScreenDefault
-import com.holman.sgd.resources.TituloScreenNominas
+import com.holman.sgd.resources.TituloGeneralScreens
 import com.holman.sgd.resources.components.ContenedorPrincipal
 import com.holman.sgd.resources.screens.isTablet
 import kotlin.String
@@ -123,7 +125,7 @@ fun MenuNominas(
                             .verticalScroll(rememberScrollState()),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        TituloScreenNominas(texto = "Gestión de nóminas")
+                        TituloGeneralScreens(texto = "Gestión de nóminas")
                         Spacer(modifier = Modifier.width(8.dp))
 
                         Text(
@@ -207,13 +209,19 @@ fun MenuCardNominas(
 
     Box(
         modifier = modifier
-            .aspectRatio(1f) // cuadradas
+            .aspectRatio(1f)
+            .shadow(
+                elevation = 8.dp,                      // sombra visible libre
+                shape = RoundedCornerShape(8.dp),
+                clip = false
+            )
+            .clip(RoundedCornerShape(8.dp))           // recorta el contenido para que no se desborde
             .background(
                 color = backgroundColor.copy(alpha = 0.95f),
-                shape = RoundedCornerShape(10.dp)
+                shape = RoundedCornerShape(8.dp)
             )
             .clickable { onClick() }
-            .padding(16.dp) // menor padding para dejar espacio real
+            .padding(16.dp)
     ) {
         Column(
             modifier = Modifier.fillMaxSize(),

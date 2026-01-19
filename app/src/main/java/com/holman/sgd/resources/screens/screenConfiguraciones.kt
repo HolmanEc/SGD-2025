@@ -66,7 +66,7 @@ fun Configuracion() {
                     .fillMaxSize()
                     .padding(ContenedorPrincipal),
                 ) {
-                    TituloScreenNominas(texto = "Configuraciones")
+                    TituloGeneralScreens(texto = "Configuraciones")
                     Spacer(modifier = Modifier.width(8.dp))
 
                     // 🔹 Contenido principal encima del fondo

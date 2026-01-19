@@ -17,8 +17,6 @@ val ContenedorPrincipal = PaddingValues(
     bottom = 24.dp   // Margen inferior
 )
 
-
-
 fun getColorsCardsInicio() = listOf(
     Card1,
     Card2,

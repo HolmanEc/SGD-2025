@@ -415,7 +415,11 @@ object TablaUI {
            modifier = Modifier
                .fillMaxWidth()
                .wrapContentHeight()
-               .shadow(elevation = 4.dp, shape = shape, clip = false)
+               .shadow(
+                   elevation = 4.dp,
+                   shape = RoundedCornerShape(8.dp),
+                   clip = false
+               )
                .clip(RoundedCornerShape(8.dp))
                .border(0.dp, colores.borde, RoundedCornerShape(8.dp))
                .background(colores.fondoContenedor)
@@ -911,7 +915,11 @@ object TablaUI {
             modifier = Modifier
                 .fillMaxWidth()
                 .wrapContentHeight()
-                .shadow(elevation = 4.dp, shape = shape, clip = false)
+                .shadow(
+                    elevation = 4.dp,
+                    shape = RoundedCornerShape(8.dp),
+                    clip = false
+                )
                 .clip(RoundedCornerShape(8.dp))
                 .border(0.dp, colores.borde, RoundedCornerShape(8.dp))
                 .background(colores.fondoContenedor)

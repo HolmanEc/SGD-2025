@@ -183,14 +183,14 @@ fun Asistencias(navController: NavHostController) {
                             modifier = Modifier.fillMaxSize(),
                             contentAlignment = Alignment.Center
                         ) {
-                            TituloScreenNominas(texto = "No hay nóminas Guardadas")
+                            TituloGeneralScreens(texto = "No hay nóminas Guardadas")
                         }
                         else -> {
                             Column(
                                 modifier = Modifier.fillMaxSize(),
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
-                                TituloScreenNominas(texto = "Nóminas Guardadas")
+                                TituloGeneralScreens(texto = "Nóminas Guardadas")
                                 Spacer(modifier = Modifier.width(8.dp))
 
                                 LazyColumn(

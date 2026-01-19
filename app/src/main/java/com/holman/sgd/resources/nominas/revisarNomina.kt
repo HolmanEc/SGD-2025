@@ -73,6 +73,7 @@ import androidx.compose.material3.Scaffold
 import com.holman.sgd.resources.NominaHeaderCard
 import android.annotation.SuppressLint
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
@@ -85,8 +86,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.holman.sgd.resources.FloatingSaveButton
@@ -96,9 +99,11 @@ import com.holman.sgd.ui.theme.TextDefaultBlack
 import androidx.compose.ui.zIndex
 import com.google.firebase.firestore.SetOptions
 import com.holman.sgd.resources.FondoScreenDefault
-import com.holman.sgd.resources.TituloScreenNominas
+import com.holman.sgd.resources.TituloGeneralScreens
 import com.holman.sgd.resources.calificaciones.TablaConfig
 import com.holman.sgd.resources.components.ContenedorPrincipal
+import com.holman.sgd.resources.darken
+import com.holman.sgd.resources.lighten
 import java.util.UUID
 
 
@@ -239,9 +244,6 @@ fun syncCalificacionesSeccionesConTabla(
         .addOnFailureListener { e -> onDone(false, e.localizedMessage) }
 }
 
-/////
-
-
 
 @Composable
 fun revisarNomina(onBack: () -> Unit)
@@ -360,14 +362,14 @@ fun revisarNomina(onBack: () -> Unit)
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
                     ) {
-                        TituloScreenNominas(texto = "No hay nóminas Guardadas")
+                        TituloGeneralScreens(texto = "No hay nóminas Guardadas")
                     }
                     else -> Column(
                         modifier = Modifier
                             .fillMaxSize()
                             //.padding(start = 16.dp, top = 16.dp, end = 16.dp)
                     ) {
-                        TituloScreenNominas(texto = "Nóminas Guardadas")
+                        TituloGeneralScreens(texto = "Nóminas Guardadas")
                         Spacer(modifier = Modifier.width(8.dp))
 
                         Box(
@@ -499,6 +501,9 @@ fun ListaNominas(
     }
 }
 
+
+////
+
 @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
 @Composable
 fun ScreenRevisarDetalleNomina(
@@ -507,6 +512,16 @@ fun ScreenRevisarDetalleNomina(
     initialEstudiantes: List<EstudianteNomina>? = null,
     onBack: () -> Unit
 ) {
+    // ⇨ CAMBIO: pesos centralizados para no equivocarnos
+    val ColW = object {
+        val Cedula = 0.15f
+        val Estudiante = 0.35f
+        val Representante = 0.20f
+        val Contacto = 0.18f
+        val Accion = 0.12f
+    }
+
+
     val context = LocalContext.current
 
     var estudiantes by remember { mutableStateOf<List<EstudianteNomina>>(initialEstudiantes ?: emptyList()) }
@@ -522,12 +537,19 @@ fun ScreenRevisarDetalleNomina(
     var showAddDialog by remember { mutableStateOf(false) }
     var scrollToId by remember { mutableStateOf<String?>(null) }
 
-    val fontSizeEstudiantes = 14.sp
+    val fontSizeEstudiantes = 12.sp
     val isBusy by remember { derivedStateOf { isLoading || isSaving } }
 
     fun normalize(list: List<EstudianteNomina>) =
         list.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.nombre.trim() })
-            .map { it.copy(nombre = it.nombre.trim(), cedula = it.cedula.trim()) }
+            .map {
+                it.copy(
+                    nombre = it.nombre.trim(),
+                    cedula = it.cedula.trim(),
+                    representante = it.representante.trim(),
+                    contacto = it.contacto.trim()
+                )
+            }
 
     fun hasChanges(): Boolean = normalize(estudiantes) != normalize(estudiantesOriginal)
 
@@ -572,7 +594,6 @@ fun ScreenRevisarDetalleNomina(
         )
     }
 
-    // Back dentro del detalle
     BackHandler(enabled = true) {
         if (isBusy) return@BackHandler
         onBack()
@@ -602,7 +623,8 @@ fun ScreenRevisarDetalleNomina(
         }
     }
 
-    Scaffold(containerColor = BackgroundDefault) { _ ->
+    Scaffold(containerColor = BackgroundDefault)
+    { _ ->
 
         CompositionLocalProvider(
             LocalTextStyle provides LocalTextStyle.current.copy(color = TextDefaultBlack)
@@ -614,7 +636,8 @@ fun ScreenRevisarDetalleNomina(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(ContenedorPrincipal)
-                ) {
+                )
+                {
                     NominaHeaderCard(
                         nomina = nomina,
                         backgroundColor = headerColor,
@@ -631,164 +654,304 @@ fun ScreenRevisarDetalleNomina(
                             Text("❌ Error: $error")
                         }
                         else -> {
-                            // Encabezado de columnas
-                            Row(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .background(headerColor, shape = RoundedCornerShape(8.dp))
-                                    .padding(vertical = 12.dp, horizontal = 16.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "CÉDULA",
-                                    fontWeight = FontWeight.ExtraBold,
-                                    fontSize = fontSizeEstudiantes,
-                                    textAlign = TextAlign.Center,
-                                    modifier = Modifier
-                                        .weight(0.25f)
-                                        .fillMaxWidth()
-                                )
-                                Text(
-                                    text = "ESTUDIANTE",
-                                    fontWeight = FontWeight.ExtraBold,
-                                    fontSize = fontSizeEstudiantes,
-                                    textAlign = TextAlign.Center,
-                                    modifier = Modifier
-                                        .weight(0.6f)
-                                        .fillMaxWidth()
-                                )
-                                Text(
-                                    text = "ACCIÓN",
-                                    fontWeight = FontWeight.ExtraBold,
-                                    fontSize = fontSizeEstudiantes,
-                                    textAlign = TextAlign.Center,
-                                    modifier = Modifier
-                                        .weight(0.15f)
-                                        .fillMaxWidth()
-                                )
-                            }
 
-                            Spacer(Modifier.height(8.dp))
+                            val headerLight = headerColor.lighten(0.50f)
+                            val headerDark = headerColor.darken(0.12f)
 
-                            // Lista principal
-                            LazyColumn(
-                                state = listState,
+                            Column(
                                 modifier = Modifier
-                                    .fillMaxWidth()
                                     .weight(1f)
-                                    .background(headerColor, shape = RoundedCornerShape(8.dp))
-                                    .padding(vertical = 16.dp, horizontal = 16.dp),
-                            ) {
-                                itemsIndexed(estudiantes, key = { _, it -> it.idUnico }) { index, est ->
-                                    val isCedulaEditing = editingField?.first == index && editingField?.second == "cedula"
-                                    val isNombreEditing = editingField?.first == index && editingField?.second == "nombre"
-
+                            )
+                            {
+                                Column(
+                                    modifier = Modifier
+                                        .shadow(
+                                            elevation = 6.dp,
+                                            shape = RoundedCornerShape(8.dp),
+                                            clip = false
+                                        )
+                                )
+                                {
+                                    // ───────── Encabezado de columnas ─────────
                                     Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth(),
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .background(headerColor, shape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
+                                            .padding(vertical = 16.dp),
                                         verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        // 🔹 CÉDULA
-                                        if (isCedulaEditing) {
-                                            val focusRequesterCedula = remember { FocusRequester() }
-                                            OutlinedTextField(
-                                                value = est.cedula,
-                                                onValueChange = { nuevo ->
-                                                    val filtrado = nuevo.uppercase().filter { it.isLetterOrDigit() }
-                                                    estudiantes = estudiantes.toMutableList().also { lista ->
-                                                        lista[index] = lista[index].copy(cedula = filtrado)
-                                                    }
-                                                },
-                                                label = { Text("Cédula", fontSize = fontSizeEstudiantes) },
-                                                textStyle = LocalTextStyle.current.copy(
-                                                    fontSize = fontSizeEstudiantes,
-                                                    textAlign = TextAlign.Center
-                                                ),
-                                                singleLine = true,
-                                                enabled = !isBusy,
-                                                modifier = Modifier
-                                                    .weight(0.25f)
-                                                    .fillMaxWidth()
-                                                    .focusRequester(focusRequesterCedula)
-                                                    .onFocusChanged { if (it.isFocused) editingField = index to "cedula" },
-                                                keyboardOptions = KeyboardOptions(
-                                                    keyboardType = KeyboardType.Ascii,
-                                                    imeAction = ImeAction.Done
-                                                ),
-                                                keyboardActions = KeyboardActions(onDone = { editingField = null })
-                                            )
-                                            LaunchedEffect(Unit) { focusRequesterCedula.requestFocus() }
-                                        } else {
-                                            Text(
-                                                text = est.cedula.ifEmpty { "Cédula" },
-                                                fontSize = fontSizeEstudiantes,
-                                                textAlign = TextAlign.Center,
-                                                modifier = Modifier
-                                                    .weight(0.25f)
-                                                    .fillMaxWidth()
-                                                    .clickable(enabled = !isBusy) { editingField = index to "cedula" }
-                                            )
-                                        }
-
-                                        // 🔹 NOMBRE
-                                        if (isNombreEditing) {
-                                            val focusRequesterNombre = remember { FocusRequester() }
-                                            OutlinedTextField(
-                                                value = est.nombre,
-                                                onValueChange = { nuevo ->
-                                                    val filtrado = nuevo.uppercase().filter { it.isLetter() || it.isWhitespace() }
-                                                    estudiantes = estudiantes.toMutableList().also { lista ->
-                                                        lista[index] = lista[index].copy(nombre = filtrado)
-                                                    }
-                                                },
-                                                label = { Text("Nombre", fontSize = fontSizeEstudiantes) },
-                                                textStyle = LocalTextStyle.current.copy(
-                                                    fontSize = fontSizeEstudiantes,
-                                                    textAlign = TextAlign.Left
-                                                ),
-                                                singleLine = true,
-                                                enabled = !isBusy,
-                                                modifier = Modifier
-                                                    .weight(0.6f)
-                                                    .fillMaxWidth()
-                                                    .focusRequester(focusRequesterNombre)
-                                                    .onFocusChanged { if (it.isFocused) editingField = index to "nombre" },
-                                                keyboardOptions = KeyboardOptions(
-                                                    keyboardType = KeyboardType.Text,
-                                                    imeAction = ImeAction.Done
-                                                ),
-                                                keyboardActions = KeyboardActions(onDone = { editingField = null })
-                                            )
-                                            LaunchedEffect(Unit) { focusRequesterNombre.requestFocus() }
-                                        } else {
-                                            Text(
-                                                text = est.nombre.ifEmpty { "Nombre" },
-                                                fontSize = fontSizeEstudiantes,
-                                                textAlign = TextAlign.Left,
-                                                modifier = Modifier
-                                                    .weight(0.6f)
-                                                    .fillMaxWidth()
-                                                    .clickable(enabled = !isBusy) { editingField = index to "nombre" }
-                                                    .padding(start = 32.dp)
-                                            )
-                                        }
-
-                                        // 🔹 ACCIÓN
-                                        Box(
+                                    )
+                                    {
+                                        val fs = fontSizeEstudiantes
+                                        Text(
+                                            text = "CÉDULA",
+                                            fontWeight = FontWeight.ExtraBold,
+                                            fontSize = fs,
+                                            textAlign = TextAlign.Center,
                                             modifier = Modifier
-                                                .weight(0.15f)
-                                                .fillMaxWidth(),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            IconButton(
-                                                onClick = {
-                                                    if (isBusy) return@IconButton
-                                                    editingField = null
-                                                    estudiantes = estudiantes.toMutableList().also { it.removeAt(index) }
-                                                },
-                                                enabled = !isBusy
+                                                .weight(ColW.Cedula) // ⇨ CAMBIO
+                                                .padding(horizontal = 4.dp)
+                                            //.background(Color(0xFFE0E0E0))
+                                        )
+                                        Text(
+                                            text = "ESTUDIANTE",
+                                            fontWeight = FontWeight.ExtraBold,
+                                            fontSize = fs,
+                                            textAlign = TextAlign.Left,
+                                            modifier = Modifier
+                                                .weight(ColW.Estudiante) // ⇨ CAMBIO
+                                                .padding(horizontal = 4.dp)
+                                            //.background(Color(0xFFE8DCB9))
+                                        )
+                                        Text(
+                                            text = "REPRESENTANTE",
+                                            fontWeight = FontWeight.ExtraBold,
+                                            fontSize = fs,
+                                            textAlign = TextAlign.Left,
+                                            modifier = Modifier
+                                                .weight(ColW.Representante) // ⇨ CAMBIO
+                                                .padding(horizontal = 4.dp)
+                                            //.background(Color(0xFF85C9C3))
+                                        )
+                                        Text(
+                                            text = "CONTACTO",
+                                            fontWeight = FontWeight.ExtraBold,
+                                            fontSize = fs,
+                                            textAlign = TextAlign.Center,
+                                            modifier = Modifier
+                                                .weight(ColW.Contacto) // ⇨ CAMBIO
+                                                .padding(horizontal = 4.dp)
+                                            //.background(Color(0xFFBEA9E8))
+                                        )
+                                        Text(
+                                            text = "ACCIÓN",
+                                            fontWeight = FontWeight.ExtraBold,
+                                            fontSize = fs,
+                                            textAlign = TextAlign.Center,
+                                            modifier = Modifier
+                                                .weight(ColW.Accion) // ⇨ CAMBIO
+                                                .padding(horizontal = 4.dp)
+                                            //.background(Color(0xFFE59595))
+                                        )
+                                    }
+
+                                    // ───────── Lista principal ─────────
+                                    LazyColumn(
+                                        state = listState,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(headerLight, shape = RoundedCornerShape(bottomStart = 8.dp, bottomEnd = 8.dp))
+                                            .padding(bottom = 16.dp),
+                                    )
+                                    {
+                                        itemsIndexed(estudiantes, key = { _, it -> it.idUnico }) { index, est ->
+
+                                            val editCed  = editingField?.first == index && editingField?.second == "cedula"
+                                            val editNom  = editingField?.first == index && editingField?.second == "nombre"
+                                            val editRep  = editingField?.first == index && editingField?.second == "representante"
+                                            val editCont = editingField?.first == index && editingField?.second == "contacto"
+
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                verticalAlignment = Alignment.CenterVertically
                                             ) {
-                                                Icon(Icons.Default.Delete, "Eliminar estudiante", tint = Color.Red)
+                                                // CÉDULA
+                                                if (editCed) {
+                                                    val fr = remember { FocusRequester() }
+                                                    OutlinedTextField(
+                                                        value = est.cedula,
+                                                        onValueChange = { v ->
+                                                            val filtrado = v.uppercase().filter { it.isLetterOrDigit() }
+                                                            estudiantes = estudiantes.toMutableList().also {
+                                                                it[index] = it[index].copy(cedula = filtrado)
+                                                            }
+                                                        },
+                                                        label = { Text("Cédula", fontSize = fontSizeEstudiantes) },
+                                                        textStyle = LocalTextStyle.current.copy(
+                                                            fontSize = fontSizeEstudiantes,
+                                                            textAlign = TextAlign.Center
+                                                        ),
+                                                        singleLine = true,
+                                                        enabled = !isBusy,
+                                                        modifier = Modifier
+                                                            .weight(ColW.Cedula) // ⇨ CAMBIO
+                                                            .fillMaxWidth()
+                                                            .focusRequester(fr)
+                                                            .onFocusChanged { if (it.isFocused) editingField = index to "cedula" },
+                                                        keyboardOptions = KeyboardOptions(
+                                                            keyboardType = KeyboardType.Ascii,
+                                                            imeAction = ImeAction.Done
+                                                        ),
+                                                        keyboardActions = KeyboardActions(onDone = { editingField = null })
+                                                    )
+                                                    LaunchedEffect(Unit) { fr.requestFocus() }
+                                                } else {
+                                                    Text(
+                                                        text = est.cedula.ifEmpty { "Cédula" },
+                                                        fontSize = fontSizeEstudiantes,
+                                                        textAlign = TextAlign.Center,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis,
+                                                        modifier = Modifier
+                                                            .weight(ColW.Cedula) // ⇨ CAMBIO
+                                                            .padding(horizontal = 4.dp)
+                                                            .fillMaxWidth()
+                                                            .clickable(enabled = !isBusy) {
+                                                                editingField = index to "cedula"
+                                                            }
+                                                    )
+                                                }
+
+                                                // ESTUDIANTE
+                                                if (editNom) {
+                                                    val fr = remember { FocusRequester() }
+                                                    OutlinedTextField(
+                                                        value = est.nombre,
+                                                        onValueChange = { v ->
+                                                            val filtrado = v.uppercase().filter { it.isLetter() || it.isWhitespace() }
+                                                            estudiantes = estudiantes.toMutableList().also {
+                                                                it[index] = it[index].copy(nombre = filtrado)
+                                                            }
+                                                        },
+                                                        label = { Text("Nombre", fontSize = fontSizeEstudiantes) },
+                                                        textStyle = LocalTextStyle.current.copy(fontSize = fontSizeEstudiantes),
+                                                        singleLine = true,
+                                                        enabled = !isBusy,
+                                                        modifier = Modifier
+                                                            .weight(ColW.Estudiante) // ⇨ CAMBIO
+                                                            .fillMaxWidth()
+                                                            .focusRequester(fr)
+                                                            .onFocusChanged { if (it.isFocused) editingField = index to "nombre" },
+                                                        keyboardOptions = KeyboardOptions(
+                                                            keyboardType = KeyboardType.Text,
+                                                            imeAction = ImeAction.Done
+                                                        ),
+                                                        keyboardActions = KeyboardActions(onDone = { editingField = null })
+                                                    )
+                                                    LaunchedEffect(Unit) { fr.requestFocus() }
+                                                } else {
+                                                    Text(
+                                                        text = est.nombre.ifEmpty { "Nombre" },
+                                                        fontSize = fontSizeEstudiantes,
+                                                        textAlign = TextAlign.Start,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis,
+                                                        modifier = Modifier
+                                                            .weight(ColW.Estudiante) // ⇨ CAMBIO
+                                                            .padding(horizontal = 4.dp)
+                                                            .fillMaxWidth()
+                                                            .clickable(enabled = !isBusy) { editingField = index to "nombre" }
+                                                    )
+                                                }
+
+                                                // REPRESENTANTE
+                                                if (editRep) {
+                                                    val fr = remember { FocusRequester() }
+                                                    OutlinedTextField(
+                                                        value = est.representante,
+                                                        onValueChange = { v ->
+                                                            val filtrado = v.uppercase()
+                                                            estudiantes = estudiantes.toMutableList().also {
+                                                                it[index] = it[index].copy(representante = filtrado)
+                                                            }
+                                                        },
+                                                        label = { Text("Representante", fontSize = fontSizeEstudiantes) },
+                                                        textStyle = LocalTextStyle.current.copy(fontSize = fontSizeEstudiantes),
+                                                        singleLine = true,
+                                                        enabled = !isBusy,
+                                                        modifier = Modifier
+                                                            .weight(ColW.Representante) // ⇨ CAMBIO
+                                                            .fillMaxWidth()
+                                                            .focusRequester(fr)
+                                                            .onFocusChanged { if (it.isFocused) editingField = index to "representante" },
+                                                        keyboardOptions = KeyboardOptions(
+                                                            keyboardType = KeyboardType.Text,
+                                                            imeAction = ImeAction.Done
+                                                        ),
+                                                        keyboardActions = KeyboardActions(onDone = { editingField = null })
+                                                    )
+                                                    LaunchedEffect(Unit) { fr.requestFocus() }
+                                                } else {
+                                                    Text(
+                                                        text = est.representante.ifEmpty { "Representante" },
+                                                        fontSize = fontSizeEstudiantes,
+                                                        textAlign = TextAlign.Start,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis,
+                                                        modifier = Modifier
+                                                            .weight(ColW.Representante) // ⇨ CAMBIO
+                                                            .padding(horizontal = 4.dp)
+                                                            .fillMaxWidth()
+                                                            .clickable(enabled = !isBusy) { editingField = index to "representante" }
+                                                    )
+                                                }
+
+                                                // CONTACTO (solo el dato; sin botón eliminar)
+                                                if (editCont) {
+                                                    val fr = remember { FocusRequester() }
+                                                    OutlinedTextField(
+                                                        value = est.contacto,
+                                                        onValueChange = { v ->
+                                                            val filtrado = v.filter { it.isDigit() || it in setOf('+', ' ', '-', '(', ')') }
+                                                            estudiantes = estudiantes.toMutableList().also {
+                                                                it[index] = it[index].copy(contacto = filtrado)
+                                                            }
+                                                        },
+                                                        label = { Text("Contacto", fontSize = fontSizeEstudiantes) },
+                                                        textStyle = LocalTextStyle.current.copy(
+                                                            fontSize = fontSizeEstudiantes,
+                                                            textAlign = TextAlign.Center
+                                                        ),
+                                                        singleLine = true,
+                                                        enabled = !isBusy,
+                                                        modifier = Modifier
+                                                            .weight(ColW.Contacto) // ⇨ CAMBIO (antes 0.30f)
+                                                            .fillMaxWidth()
+                                                            .focusRequester(fr)
+                                                            .onFocusChanged { if (it.isFocused) editingField = index to "contacto" },
+                                                        keyboardOptions = KeyboardOptions(
+                                                            keyboardType = KeyboardType.Phone,
+                                                            imeAction = ImeAction.Done
+                                                        ),
+                                                        keyboardActions = KeyboardActions(onDone = { editingField = null })
+                                                    )
+                                                    LaunchedEffect(Unit) { fr.requestFocus() }
+                                                } else {
+                                                    Text(
+                                                        text = est.contacto.ifEmpty { "—" },
+                                                        fontSize = fontSizeEstudiantes,
+                                                        textAlign = TextAlign.Center,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis,
+                                                        modifier = Modifier
+                                                            .weight(ColW.Contacto) // ⇨ CAMBIO
+                                                            .padding(horizontal = 4.dp)
+                                                            .fillMaxWidth()
+                                                            .clickable(enabled = !isBusy) { editingField = index to "contacto" }
+                                                    )
+                                                }
+
+                                                // ACCIÓN (columna aparte)
+                                                Box(
+                                                    modifier = Modifier
+                                                        .weight(ColW.Accion) // ⇨ CAMBIO
+                                                        .fillMaxWidth(),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    IconButton(
+                                                        onClick = {
+                                                            if (isBusy) return@IconButton
+                                                            editingField = null
+                                                            estudiantes = estudiantes.toMutableList().also { it.removeAt(index) }
+                                                        },
+                                                        enabled = !isBusy
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.Delete,
+                                                            contentDescription = "Eliminar estudiante",
+                                                            tint = Color.Red
+                                                        )
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -797,11 +960,9 @@ fun ScreenRevisarDetalleNomina(
 
                             Spacer(Modifier.height(16.dp))
 
-                            // *** ZONA DE ACCIONES AL FONDO ***
-                            Column(
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                // Fila 1: SOLO "Agregar estudiante"
+                            // ───────── Zona de acciones ─────────
+                            Column(modifier = Modifier.fillMaxWidth())
+                            {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.Center
@@ -821,7 +982,6 @@ fun ScreenRevisarDetalleNomina(
                                     )
                                 }
 
-                                // Fila 2: DOS COLUMNAS: Guardar | Volver
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -843,6 +1003,7 @@ fun ScreenRevisarDetalleNomina(
                                     }
                                 }
                             }
+
                         }
                     }
                 }
@@ -851,19 +1012,36 @@ fun ScreenRevisarDetalleNomina(
                     AddEstudianteDialog(
                         onDismiss = { showAddDialog = false },
                         onConfirm = { ced, nom ->
-                            val existe = estudiantes.any {
-                                it.cedula.equals(ced, ignoreCase = true) &&
-                                        it.nombre.equals(nom, ignoreCase = true)
-                            }
-                            if (existe) {
-                                mensajealert(context, "⚠️ Ya existe un estudiante con esos datos.")
+                            // Normalización coherente con tus campos de edición
+                            val cedNorm = ced.trim().uppercase().filter { it.isLetterOrDigit() }
+                            val nomNorm = nom.trim().uppercase().filter { it.isLetter() || it.isWhitespace() }
+
+                            if (cedNorm.isBlank() || nomNorm.isBlank()) {
+                                mensajealert(context, "⚠️ Cédula y nombre son obligatorios.")
                                 return@AddEstudianteDialog
                             }
+
+                            // 🔍 Validar duplicado por CÉDULA o por NOMBRE
+                            val yaExiste = estudiantes.any { est ->
+                                val cedEst = est.cedula.trim().uppercase().filter { c -> c.isLetterOrDigit() }
+                                val nomEst = est.nombre.trim().uppercase().filter { c -> c.isLetter() || c.isWhitespace() }
+
+                                cedEst == cedNorm || nomEst == nomNorm   // <-- AQUÍ EL CONTROL QUE PEDISTE
+                            }
+
+                            if (yaExiste) {
+                                mensajealert(context, "⚠️ Ya existe un estudiante con esa cédula o nombre.")
+                                return@AddEstudianteDialog
+                            }
+
                             val nuevo = EstudianteNomina(
-                                idUnico = generarIdUnicoEstudianteNomina(ced, nom),
-                                cedula = ced,
-                                nombre = nom
+                                idUnico = generarIdUnicoEstudianteNomina(cedNorm, nomNorm),
+                                cedula = cedNorm,
+                                nombre = nomNorm,
+                                representante = "",
+                                contacto = ""
                             )
+
                             val listaOrdenada = (estudiantes + nuevo)
                                 .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.nombre.trim() })
 
@@ -871,6 +1049,7 @@ fun ScreenRevisarDetalleNomina(
                             showAddDialog = false
                             scrollToId = nuevo.idUnico
                         }
+
                     )
                 }
 
@@ -878,6 +1057,7 @@ fun ScreenRevisarDetalleNomina(
             }
         }
     }
+
 }
 
 
@@ -1013,9 +1193,11 @@ fun asegurarCalificacionesParaEstudiantes(
     }.addOnFailureListener { onDone() }
 }
 data class EstudianteNomina(
-    val idUnico: String,    // ID único basado en cédula
+    val idUnico: String,          // ID generado/estable
     var cedula: String,
-    var nombre: String
+    var nombre: String,
+    var representante: String = "",
+    var contacto: String = ""
 )
 
 fun generarIdUnicoEstudianteNomina(cedula: String, nombre: String): String {
@@ -1034,57 +1216,50 @@ fun cargarEstudiantesDeNomina(
         .document(nominaId)
         .get()
         .addOnSuccessListener { doc ->
-            if (!doc.exists()) {
-                onError("No existe la nómina"); return@addOnSuccessListener
-            }
+            if (!doc.exists()) { onError("No existe la nómina"); return@addOnSuccessListener }
 
-            // ✅ Cast seguro: List<*> -> Map<*, *> -> Map<String, Any?>
-            val tabla: List<Map<String, Any?>> =
-                (doc.get("tabla") as? List<*>)?.mapNotNull { item ->
-                    (item as? Map<*, *>)?.let { raw ->
-                        // Normalizamos solo las claves que nos interesan
-                        mapOf(
-                            "col1" to (raw["col1"] as? String),      // ID
-                            "col2" to (raw["col2"] as? String),      // Nro
-                            "col3" to (raw["col3"] as? String),      // Cédula
-                            "col4" to (raw["col4"] as? String),      // Estudiante
-                            // Fallbacks legacy por si existen claves con nombres antiguos
-                            "Cédula" to (raw["Cédula"] as? String),
-                            "Estudiante" to (raw["Estudiante"] as? String)
-                        )
+            @Suppress("UNCHECKED_CAST")
+            val tabla = (doc.get("tabla") as? List<Map<String, Any?>>).orEmpty()
+            if (tabla.isEmpty()) { onSuccess(emptyList()); return@addOnSuccessListener }
+
+            // Encabezado (primera fila) para detectar nombres de columnas
+            val header = tabla.first()
+
+            fun findIndexByTitle(vararg posibles: String): Int? {
+                val want = posibles.map { it.trim().uppercase() }.toSet()
+                // header = { "col1" -> "ID", "col2" -> "NRO", "col3" -> "CÉDULA", ... }
+                header.entries.forEach { (k, v) ->
+                    if (k.startsWith("col") && (v as? String)?.trim()?.uppercase() in want) {
+                        return k.removePrefix("col").toIntOrNull()
                     }
-                } ?: emptyList()
-
-            if (tabla.isEmpty()) {
-                onSuccess(emptyList()); return@addOnSuccessListener
+                }
+                return null
             }
 
-            // Saltar encabezado si lo hay
+            val idxID   = findIndexByTitle("ID") ?: 1
+            val idxNRO  = findIndexByTitle("NRO") ?: 2  // solo por compatibilidad si lo usas
+            val idxCed  = findIndexByTitle("CÉDULA", "CEDULA") ?: 3
+            val idxNom  = findIndexByTitle("ESTUDIANTE", "ALUMNO", "NOMBRE") ?: 4
+            val idxRep  = findIndexByTitle("REPRESENTANTE", "TUTOR", "APODERADO") ?: 5
+            val idxCont = findIndexByTitle("CONTACTO", "TELÉFONO", "TELEFONO", "CELULAR") ?: 6
+
+            fun get(row: Map<String, Any?>, idx: Int): String =
+                (row["col$idx"] as? String)?.trim().orEmpty()
+
             val filas = tabla.drop(1)
-
-            val lista = filas.map { fila ->
-                val idPersistido  = (fila["col1"] as? String)?.trim().orEmpty()
-                val cedPersistida = (fila["col3"] as? String)?.trim().orEmpty()
-                val nomPersistido = (fila["col4"] as? String)?.trim().orEmpty()
-
-                // Fallback legacy
-                val cedula = if (cedPersistida.isNotEmpty())
-                    cedPersistida
-                else
-                    ((fila["Cédula"] ?: fila["col2"] ?: "") as? String)?.trim().orEmpty()
-
-                val nombre = if (nomPersistido.isNotEmpty())
-                    nomPersistido
-                else
-                    ((fila["Estudiante"] ?: fila["col4"] ?: "") as? String)?.trim().orEmpty()
-
-                val idUnico = if (idPersistido.isNotEmpty()) idPersistido
-                else generarIdUnicoEstudianteNomina(cedula, nombre) // legacy estable
+            val lista = filas.map { row ->
+                val id  = get(row, idxID).ifBlank { null }
+                val ced = get(row, idxCed)
+                val nom = get(row, idxNom)
+                val rep = get(row, idxRep)
+                val con = get(row, idxCont)
 
                 EstudianteNomina(
-                    idUnico = idUnico,
-                    cedula = cedula,
-                    nombre = nombre
+                    idUnico = id ?: generarIdUnicoEstudianteNomina(ced, nom),
+                    cedula = ced,
+                    nombre = nom,
+                    representante = rep,
+                    contacto = con
                 )
             }
 
@@ -1095,6 +1270,8 @@ fun cargarEstudiantesDeNomina(
         }
 }
 
+
+//
 fun actualizarEstudiantesDeNomina(
     nominaId: String,
     estudiantes: List<EstudianteNomina>,
@@ -1107,12 +1284,14 @@ fun actualizarEstudiantesDeNomina(
         .collection("nominasEstudiantes")
         .document(nominaId)
 
-    // Construir tabla con el nuevo orden (col1=ID, col2=Nro, col3=Cédula, col4=Estudiante)
+    // Encabezado canónico
     val encabezado = mapOf(
         "col1" to "ID",
-        "col2" to "Nro",
-        "col3" to "Cédula",
-        "col4" to "Estudiante"
+        "col2" to "NRO",
+        "col3" to "CÉDULA",
+        "col4" to "ESTUDIANTE",
+        "col5" to "REPRESENTANTE",
+        "col6" to "CONTACTO"
     )
 
     val filas = listOf(encabezado) + estudiantes.mapIndexed { index, est ->
@@ -1120,34 +1299,30 @@ fun actualizarEstudiantesDeNomina(
             "col1" to est.idUnico,
             "col2" to (index + 1).toString(),
             "col3" to est.cedula,
-            "col4" to est.nombre
+            "col4" to est.nombre,
+            "col5" to est.representante,
+            "col6" to est.contacto
         )
     }
 
     nominaRef.update("tabla", filas)
         .addOnSuccessListener {
-            // 1) Sincroniza calificaciones (crea faltantes y borra huérfanos en TODAS las secciones)
+            // Mantiene tu sincronización de calificaciones (solo usa id/cedula/nombre)
             syncCalificacionesSeccionesConTabla(
                 nominaId = nominaId,
                 estudiantesActuales = estudiantes,
                 insumosCount = TablaConfig.INSUMOS_COUNT
             ) { ok, err ->
-                if (!ok) {
-                    onError(err ?: "No se pudo sincronizar calificaciones")
-                    return@syncCalificacionesSeccionesConTabla
-                }
-                // 2) Limpia asistencias huérfanas (documentos por fecha)
-                limpiarTodasLasAsistenciasHuerfanas(
-                    nominaId = nominaId,
-                    estudiantesActuales = estudiantes
-                )
-                onSuccess()
+                if (!ok) onError(err ?: "No se pudo sincronizar calificaciones") else onSuccess()
             }
         }
         .addOnFailureListener { e ->
             onError(e.localizedMessage ?: "Error al actualizar la tabla de la nómina")
         }
 }
+
+
+
 
 fun limpiarTodasLasAsistenciasHuerfanas(
     nominaId: String,
@@ -1707,7 +1882,7 @@ private fun AddEstudianteDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
             dismissOnBackPress = true,
-            dismissOnClickOutside = false,
+            dismissOnClickOutside = true,
             usePlatformDefaultWidth = false
         )
     ) {
@@ -1813,7 +1988,6 @@ private fun idUnicoEstudiante(): String =
 
 fun crearEstudianteVacio(): EstudianteNomina =
     EstudianteNomina(idUnico = idUnicoEstudiante(), cedula = "", nombre = "")
-
 
 // ------------
 

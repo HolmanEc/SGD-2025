@@ -552,7 +552,7 @@ fun NominaCardCalificaciones(
 
 ///
 @Composable
-fun TituloScreenNominas(
+fun TituloGeneralScreens(
     texto: String,
     modifier: Modifier = Modifier,
     iconSize: Dp = 26.dp,
@@ -560,19 +560,23 @@ fun TituloScreenNominas(
     fontSize: TextUnit = 22.sp,
     fontWeight: FontWeight = FontWeight.Bold
 ) {
-    // 🔹 Lista de posibles íconos según palabra clave
     val iconMap = mapOf(
         "formulario" to Icons.Default.Description,
         "asistencia" to Icons.Default.CheckCircle,
         "nomina" to Icons.Default.People,
+        "nómina" to Icons.Default.People,
         "calificacion" to Icons.Default.Star,
+        "calificación" to Icons.Default.Star,
+        "insumos" to Icons.Default.Star,
         "nota" to Icons.Default.StarHalf,
         "estudiante" to Icons.Default.School,
         "curso" to Icons.Default.MenuBook,
         "docente" to Icons.Default.Person,
         "informe" to Icons.Default.Assessment,
         "gestión" to Icons.Default.Summarize,
+        "gestion" to Icons.Default.Summarize,
         "configuracion" to Icons.Default.Settings,
+        "configuración" to Icons.Default.Settings,
         "ajuste" to Icons.Default.Tune,
         "exportar" to Icons.Default.FileUpload,
         "importar" to Icons.Default.FileDownload,
@@ -582,19 +586,22 @@ fun TituloScreenNominas(
         "registro" to Icons.Default.EditNote
     )
 
-    // 🔹 Buscar si el texto contiene alguna palabra clave del mapa
     val lowerText = texto.lowercase()
-    val matchedIcon = iconMap.entries.firstOrNull { (key, _) ->
-        lowerText.contains(key)
-    }?.value ?: Icons.Default.List // ícono por defecto
+    val matchedIcon = iconMap.entries.firstOrNull { lowerText.contains(it.key) }?.value
+        ?: Icons.Default.List
 
-    // 🔹 UI principal
+    val shouldShowDivider = remember(lowerText) {
+        !lowerText.contains("no hay")
+    }
+
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(top = 16.dp, bottom = 8.dp),
+            .padding(top = 16.dp, bottom = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+
+        // 🔹 Título
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
@@ -615,21 +622,33 @@ fun TituloScreenNominas(
                 color = color
             )
         }
-    }
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(vertical = 16.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Divider(
-            color = TextDefaultBlack.copy(alpha = 0.3f),
-            thickness = 1.dp,
-            modifier = Modifier
-                .fillMaxWidth(1f) // 🔹 opcional: ancho del divisor (60% del ancho total)
-        )
-    }
 
+        // 🔹 Subrayado elegante (no divisor)
+        if (shouldShowDivider) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 18.dp, bottom = 20.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .height(2.dp)
+                        .fillMaxWidth(1f)
+                        .background(
+                            brush = Brush.horizontalGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    TextDefaultBlack.copy(alpha = 0.75f),
+                                    Color.Transparent
+                                )
+                            )
+                        )
+                )
+            }
+        }
+
+    }
 }
 
 
@@ -750,6 +769,9 @@ fun NominaHeaderCard(
     }
 }
 
+
+
+
 @Composable
 fun NominaReviewCard(
     nomina: NominaResumen,
@@ -761,70 +783,82 @@ fun NominaReviewCard(
     onEditar: (NominaResumen) -> Unit
 ) {
     val cardColors = getColorsCardsInicio()
-    val backgroundColor = cardColors[index % cardColors.size]
+    val baseColor = cardColors[index % cardColors.size]
     val fontColorCard = TextDefaultBlack
     val shape = RoundedCornerShape(12.dp)
+
+    // 🔹 mismos tonos que en NominaCardAsistencias
+    val lightColor = baseColor.copy(alpha = 1f).lighten(0.2f)
+    val darkColor = baseColor.copy(alpha = 1f).darken(0.2f)
 
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp)
-            .shadow(elevation = 4.dp, shape = shape, clip = false)
+            .shadow(elevation = 6.dp, shape = shape, clip = false) // mismo relieve
             .clip(shape)
-            .clickable(enabled = !isBusy) { onRevisar(nomina, backgroundColor) },
+            .clickable(enabled = !isBusy) { onRevisar(nomina, baseColor) },
         shape = shape,
-        color = backgroundColor,
+        color = Color.Transparent,            // el color lo pinta el degradado
         contentColor = fontColorCard
     ) {
-        Column(
+        // 🔹 Fondo con el degradado vertical (igual que el otro card)
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
+                .background(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            lightColor,
+                            baseColor,
+                            darkColor
+                        )
+                    )
+                )
                 .padding(vertical = 20.dp, horizontal = 40.dp)
         ) {
-            // 🏫 Encabezado con botones de editar y eliminar
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = nomina.institucion,
-                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-                )
+            Column(modifier = Modifier.fillMaxWidth()) {
 
-                Row {
-                    IconButton(
-                        onClick = { if (!isBusy) onEditar(nomina) },
-                        enabled = !isBusy
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Edit,
-                            contentDescription = "Editar nómina",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                    IconButton(
-                        onClick = { if (!isBusy) onBorrar(nomina) },
-                        enabled = !isBusy
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Delete,
-                            contentDescription = "Eliminar nómina",
-                            tint = MaterialTheme.colorScheme.error
-                        )
+                // 🏫 Encabezado con botones de editar y eliminar
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = nomina.institucion,
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                    )
+
+                    Row {
+                        IconButton(
+                            onClick = { if (!isBusy) onEditar(nomina) },
+                            enabled = !isBusy
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = "Editar nómina",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        IconButton(
+                            onClick = { if (!isBusy) onBorrar(nomina) },
+                            enabled = !isBusy
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "Eliminar nómina",
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                        }
                     }
                 }
-            }
 
-            HorizontalDivider(
-                thickness = 1.dp,
-                color = LocalContentColor.current.copy(alpha = 0.5f)
-            )
-            Spacer(Modifier.height(12.dp))
+                HorizontalDivider(
+                    thickness = 1.dp,
+                    color = LocalContentColor.current.copy(alpha = 0.5f)
+                )
+                Spacer(Modifier.height(12.dp))
 
-            Column(
-                modifier = Modifier.fillMaxWidth()
-            ) {
                 if (isTablet) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -859,6 +893,8 @@ fun NominaReviewCard(
         }
     }
 }
+
+
 
 @Composable
 fun InfoItem(icon: ImageVector, label: String, value: String) {
@@ -1103,6 +1139,8 @@ fun FloatingExportButton(
 fun VistaPreviaTablaExcel(
     modifier: Modifier = Modifier.fillMaxSize()
 ) {
+    val columnas = listOf("ID", "CÉDULA", "ESTUDIANTE", "REPRESENTANTE", "CONTACTO")
+
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally
@@ -1121,7 +1159,7 @@ fun VistaPreviaTablaExcel(
             style = MaterialTheme.typography.bodyMedium.copy(
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
             ),
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            textAlign = TextAlign.Center,
             modifier = Modifier.padding(bottom = 20.dp)
         )
 
@@ -1130,6 +1168,7 @@ fun VistaPreviaTablaExcel(
                 .fillMaxWidth()
                 .weight(1f, fill = true)
         ) {
+            // Encabezado de tabla
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1137,32 +1176,37 @@ fun VistaPreviaTablaExcel(
                     .padding(vertical = 10.dp, horizontal = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                listOf("ID", "CÉDULA", "ESTUDIANTE").forEach { col ->
+                columnas.forEach { col ->
                     Text(
                         text = col,
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                        textAlign = TextAlign.Center,
                         style = MaterialTheme.typography.labelLarge.copy(
                             fontWeight = FontWeight.Bold,
-                            color = TextoClaroLight
+                            color = TextoClaroLight,
+                            fontSize = 10.sp
                         )
                     )
                 }
             }
 
+            // Filas de vista previa
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.SpaceEvenly
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 repeat(8) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 4.dp),
+                            .padding(vertical = 2.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        repeat(3) {
+                        columnas.forEachIndexed { index, _ ->
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
@@ -1170,13 +1214,16 @@ fun VistaPreviaTablaExcel(
                                     .clip(RoundedCornerShape(4.dp))
                                     .background(FondoGris.copy(alpha = 0.2f))
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
+                            if (index < columnas.lastIndex)
+                                Spacer(modifier = Modifier.width(6.dp))
                         }
                     }
-                    HorizontalDivider(
-                        thickness = 0.5.dp,
-                        color = BordeGris.copy(alpha = 0.3f)
-                    )
+                    if (it < 7) {
+                        HorizontalDivider(
+                            thickness = 0.5.dp,
+                            color = BordeGris.copy(alpha = 0.3f)
+                        )
+                    }
                 }
             }
         }
@@ -1186,13 +1233,14 @@ fun VistaPreviaTablaExcel(
             style = MaterialTheme.typography.bodySmall.copy(
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
             ),
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            textAlign = TextAlign.Center,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 12.dp)
         )
     }
 }
+
 
 
 @Suppress("DEPRECATION") // evita el warning de 'view' obsoleto
@@ -1246,6 +1294,9 @@ fun Color.darken(factor: Float): Color {
         alpha = alpha
     )
 }
+
+
+
 
 
 ////////////////////
