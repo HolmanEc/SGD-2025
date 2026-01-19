@@ -570,7 +570,7 @@ fun LoginScreen(
                         OutlinedTextField(
                             value = resetEmail,
                             onValueChange = { resetEmail = it.lowercase() },
-                            label = { Text("Correo electrónico222222222") },
+                            label = { Text("Correo electrónico") },
                             singleLine = true,
                             enabled = !sendingResetEmail,
                             modifier = Modifier
