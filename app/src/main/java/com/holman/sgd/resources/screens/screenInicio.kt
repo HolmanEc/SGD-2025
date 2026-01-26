@@ -14,8 +14,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
@@ -29,72 +27,78 @@ import androidx.compose.ui.window.Dialog
 import androidx.navigation.NavHostController
 import com.holman.sgd.R
 import com.holman.sgd.resources.CustomButton
+import com.holman.sgd.resources.DefaultCard
+import com.holman.sgd.resources.FondoInicio
 import com.holman.sgd.ui.theme.*
 import com.holman.sgd.resources.components.*
 
 @SuppressLint("ContextCastToActivity", "UnusedBoxWithConstraintsScope")
-
 @Composable
 fun Inicio(navController: NavHostController) {
+
+    // Dialog global de salida (misma funcionalidad)
     SalirDialog()
 
+    // Datos del menú
     val cards = getCardsInicio()
     val colors = getColorsCardsInicio()
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val maxWidthDp = maxWidth
+        val cardsPerRow = calculateCardsPerRow(maxWidth)
 
-        // Define cuántas cards mostrar por fila según el ancho
-        val cardsPerRow = if (maxWidthDp < 700.dp) 2 else 3
+        // Fondo
+        FondoInicio()
 
-        Image(
-            painter = painterResource(id = R.drawable.fondo3),
-            contentDescription = "Fondo",
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize()
+        // Grid
+        InicioGrid(
+            cards = cards,
+            colors = colors,
+            cardsPerRow = cardsPerRow,
+            onCardClick = { route ->
+                navigateSingleTop(navController, route)
+            }
         )
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.50f))
-        )
+    }
+}
 
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp)
-                .verticalScroll(rememberScrollState()),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            for (i in cards.indices step cardsPerRow) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    for (j in 0 until cardsPerRow) {
-                        if (i + j < cards.size) {
-                            val (title, icon, routeDesc) = cards[i + j]
-                            val (route, description) = routeDesc
+@Composable
+private fun InicioGrid(
+    cards: List<Triple<String, Int, Pair<String, String>>>,
+    colors: List<Color>,
+    cardsPerRow: Int,
+    onCardClick: (String) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+            .verticalScroll(rememberScrollState()),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        for (i in cards.indices step cardsPerRow) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                for (j in 0 until cardsPerRow) {
+                    if (i + j < cards.size) {
+                        val (title, icon, routeDesc) = cards[i + j]
+                        val (route, description) = routeDesc
 
-                            MenuCard(
-                                title = title,
-                                iconResId = icon,
-                                backgroundColor = colors[(i + j) % colors.size],
-                                descriptionCard = description,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                navController.navigate(route) {
-                                    popUpTo(navController.graph.startDestinationId) {
-                                        inclusive = false
-                                    }
-                                    launchSingleTop = true
-                                }
-                            }
-                        } else {
-                            Spacer(modifier = Modifier.weight(1f))
-                        }
+                        DefaultCard(
+                            title = title,
+                            iconResId = icon,
+                            backgroundColor = colors[(i + j) % colors.size],
+                            backgroundAlpha = Transparencia.STRONG,
+                            descriptionCard = description,
+                            modifier = Modifier.weight(1f),
+                            onClick = { onCardClick(route) }
+                        )
+                    } else {
+                        // Mantiene el grid alineado cuando faltan cards en la última fila
+                        Spacer(modifier = Modifier.weight(1f))
                     }
                 }
             }
@@ -102,71 +106,36 @@ fun Inicio(navController: NavHostController) {
     }
 }
 
-@SuppressLint("UnusedBoxWithConstraintsScope")
-@Composable
-fun MenuCard(
-    title: String,
-    iconResId: Int,
-    backgroundColor: Color,
-    descriptionCard: String,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    val isTablet = isTablet() // usamos Configuración del sistema 📱💻
+// ============================================================================
+// Helpers
+// ============================================================================
 
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .aspectRatio(1f) // todas cuadradas, como al inicio
-            .background(
-                color = backgroundColor.copy(alpha = 0.95f),
-                shape = RoundedCornerShape(10.dp)
-            )
-            .clickable { onClick() }
-            .padding(32.dp)
-    ) {
-        Column(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.SpaceEvenly,
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            // Ícono
-            Image(
-                painter = painterResource(id = iconResId),
-                contentDescription = title,
-                modifier = Modifier.size(if (isTablet) 72.dp else 56.dp)
-            )
+/** Define cuántas cards por fila según el ancho máximo disponible */
+private fun calculateCardsPerRow(maxWidthDp: androidx.compose.ui.unit.Dp): Int {
+    return if (maxWidthDp < 700.dp) 2 else 3
+}
 
-            // Título
-            Text(
-                text = title.uppercase(),
-                color = TextDefaultBlack,
-                fontWeight = FontWeight.Bold,
-                fontSize = if (isTablet) 16.sp else 14.sp,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            // ✅ Solo en TABLET aparece descripción
-            if (isTablet) {
-                Text(
-                    text = descriptionCard,
-                    color = TextDefaultBlack,
-                    fontSize = 12.sp,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
+/** Navegación: mantiene tu popUpTo + launchSingleTop exactamente igual */
+private fun navigateSingleTop(navController: NavHostController, route: String) {
+    navController.navigate(route) {
+        popUpTo(navController.graph.startDestinationId) {
+            inclusive = false
         }
+        launchSingleTop = true
     }
 }
-// Funcion auxiliar
 
+/** Helper: detectar tablet por smallestScreenWidthDp (misma lógica) */
 @Composable
 fun isTablet(): Boolean {
     val configuration = LocalConfiguration.current
     return configuration.smallestScreenWidthDp >= 600
 }
+
+// ============================================================================
+// Dialog de salida (BackHandler) - misma funcionalidad
+// ============================================================================
+
 @SuppressLint("ContextCastToActivity")
 @Composable
 fun SalirDialog() {
@@ -174,21 +143,19 @@ fun SalirDialog() {
     val activity = context as? Activity
     var showExitDialog by remember { mutableStateOf(false) }
 
+    // Back -> mostrar dialog
     BackHandler { showExitDialog = true }
 
     if (showExitDialog) {
-        Dialog(
-            onDismissRequest = { showExitDialog = false }
-        ) {
-            // Contenedor del diálogo (tú controlas color, bordes y sombra)
+        Dialog(onDismissRequest = { showExitDialog = false }) {
             Surface(
                 shape = RoundedCornerShape(20.dp),
-                color = BackgroundDefault,         // color de fondo del diálogo
-                tonalElevation = 0.dp,             // sin elevación tonal
-                shadowElevation = 16.dp,           // << sombra real visible
+                color = BackgroundDefault,
+                tonalElevation = 0.dp,
+                shadowElevation = 16.dp,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 24.dp)   // margen respecto a los bordes de pantalla
+                    .padding(horizontal = 24.dp)
             ) {
                 Column(
                     modifier = Modifier

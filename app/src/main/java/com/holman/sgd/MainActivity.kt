@@ -48,7 +48,7 @@ import com.holman.sgd.resources.screens.*
 import com.holman.sgd.resources.nominas.*
 import com.holman.sgd.ui.theme.*
 import androidx.compose.material3.HorizontalDivider  // ← reemplaza Divider
-import androidx.core.view.WindowCompat
+import com.holman.sgd.resources.screens.Varios
 
 // MAIN ACTIVITY
 class MainActivity : ComponentActivity() {
@@ -239,7 +239,7 @@ fun NavigationHost(navController: NavHostController) {
         composable(Screen.asistencias.route) { Asistencias(navController = navController) }
         composable(Screen.tutoria.route) { Tutoria(navController = navController) }
         composable(Screen.documentos.route) { Documentos() }
-        composable(Screen.varios.route) { Varios() }
+        composable(Screen.varios.route) { Varios(navController = navController) }
         composable(Screen.config.route) { Configuracion() }
         composable(Screen.about.route) { About() }
     }

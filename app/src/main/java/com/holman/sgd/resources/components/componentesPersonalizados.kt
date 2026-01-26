@@ -90,10 +90,35 @@ import com.holman.sgd.ui.theme.BackgroundDefault
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material3.*
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.TextUnit
+import com.holman.sgd.R
+import com.holman.sgd.resources.components.Transparencia
 
-
+@Composable
+fun FondoLogin() {
+    Image(
+        painter = painterResource(id = R.drawable.fondologin),
+        contentDescription = null,
+        modifier = Modifier.fillMaxSize(),
+        contentScale = ContentScale.Crop
+    )
+}
+@Composable
+fun FondoInicio() {
+    Image(
+        painter = painterResource(id = R.drawable.fondo3),
+        contentDescription = "Fondo",
+        contentScale = ContentScale.Crop,
+        modifier = Modifier.fillMaxSize()
+    )
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.50f))
+    )
+}
 @Composable
 fun FondoScreenDefault() {
     Box(modifier = Modifier.fillMaxSize()) {
@@ -113,6 +138,86 @@ fun FondoScreenDefault() {
         )
     }
 }
+
+@Composable
+fun DefaultCard(
+    title: String,
+    iconResId: Int,
+    backgroundColor: Color,
+    descriptionCard: String,
+    modifier: Modifier = Modifier,
+    backgroundAlpha: Float = Transparencia.DEFAULT,
+    onClick: () -> Unit
+)  {
+    val isTablet = isTablet()
+    val shape = RoundedCornerShape(12.dp)
+
+    Box(
+        modifier = modifier
+            .aspectRatio(1f)
+            .clip(shape)
+            .background(
+                color = backgroundColor.copy(alpha = backgroundAlpha),
+                shape = shape
+            )
+            .clickable { onClick() }
+            .padding(if (isTablet) 48.dp else 24.dp)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.SpaceBetween,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // Ícono
+            Image(
+                painter = painterResource(id = iconResId),
+                contentDescription = title,
+                modifier = Modifier.size(if (isTablet) 72.dp else 56.dp)
+            )
+
+            // Título
+            Text(
+                text = title.uppercase(),
+                color = TextDefaultBlack,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = if (isTablet) 17.sp else 14.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            // Descripción solo en tablet
+            if (isTablet) {
+                Text(
+                    text = descriptionCard,
+                    color = TextDefaultBlack.copy(alpha = 0.85f),
+                    fontSize = 12.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 @Composable
@@ -317,9 +422,9 @@ fun NominaCardAsistencias(
 // ==========================
 // Modelo
 // ==========================
+
+
 enum class TerminoEval { T1, T2, T3, INF }
-
-
 @Composable
 fun TerminoSelectorSegmented(
     modifier: Modifier = Modifier,
@@ -914,29 +1019,34 @@ fun InfoItem(icon: ImageVector, label: String, value: String) {
 @Composable
 fun LoadingDotsOverlay(
     isLoading: Boolean,
-    //backgroundImage: Painter = painterResource(R.drawable.fondoloading),
-    imageAlpha: Float = 0.05f,      // Transparencia de la imagen (0 = invisible, 1 = opaca)
-    scrimAlpha: Float = 0.35f       // Opacidad de la máscara oscura
+    imageAlpha: Float = 0.05f,
+    scrimAlpha: Float = 0.35f,
+    dotColor: Color = colorPuntos,
+    blockTouches: Boolean = true
 ) {
     if (!isLoading) return
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // 1) Imagen semitransparente sobre tu UI existente
-        //Image(
-        //    painter = backgroundImage,
-        //    contentDescription = null,
-        //    contentScale = ContentScale.Crop,
-        //   modifier = Modifier
-        //       .fillMaxSize()
-        //       .alpha(imageAlpha)
-        // )
 
-        // 2) Máscara oscura encima de la imagen
-        Box(
-            modifier = Modifier
+        // 1) Imagen semitransparente sobre tu UI existente (opcional)
+        // Image(...)
+
+        // 2) Máscara oscura encima de la imagen (y opcionalmente bloquea toques)
+        val blocker = if (blockTouches) {
+            Modifier
                 .matchParentSize()
                 .background(Color.Black.copy(alpha = scrimAlpha))
-        )
+                .clickable(
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() }
+                ) { /* consume */ }
+        } else {
+            Modifier
+                .matchParentSize()
+                .background(Color.Black.copy(alpha = scrimAlpha))
+        }
+
+        Box(modifier = blocker)
 
         // 3) Puntos animados arriba de todo
         Row(
@@ -961,9 +1071,9 @@ fun LoadingDotsOverlay(
                         .size(16.dp)
                         .offset(y = offsetY.dp)
                         .background(
-                            colorPuntos,
+                            color = dotColor,
                             shape = CircleShape
-                        ) // o MaterialTheme.colorScheme.primary
+                        )
                 )
             }
         }

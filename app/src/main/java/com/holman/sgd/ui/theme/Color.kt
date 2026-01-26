@@ -2,23 +2,23 @@ package com.holman.sgd.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// ======================
-// Colores para fondos de screens
-// ======================
+// =====================================================
+// 🎯 COLORES BASE DE PANTALLAS (screens) / TEXTO GENERAL
+// =====================================================
 val BackgroundDefault = Color(0xFFECF9FF)
-val TextDefaultBlack = Color(0xFF1C1E2C)
-val TextDefaultWhite = Color(0xFFFFFFFF)
 val BackgroundBar = Color(0xFF4A5565)
 
+val TextDefaultBlack = Color(0xFF1C1E2C)
+val TextDefaultWhite = Color(0xFFFFFFFF)
+
 // ======================
-// Colores para loading
+// ⏳ COLORES PARA LOADING
 // ======================
 val colorPuntos = Color(0xFFFFFFFF)
 
-
-
 // ======================
-// 🎨 Colores para cards (suaves pero un poco más oscuros)
+// 🎨 COLORES PARA CARDS
+// (suaves pero un poco más oscuros)
 // ======================
 val Card1 = Color(0xFF4FC3F7)  // Azul medio-claro
 val Card2 = Color(0xFF80CBC4)  // Verde agua medio
@@ -29,16 +29,14 @@ val Card6 = Color(0xFFFFD180)  // Amarillo miel medio
 val Card7 = Color(0xFFEF9A9A)  // Rojo coral medio
 val Card8 = Color(0xFFB0BEC5)  // Gris azulado medio
 
-
 // ======================
-// Colores para botones
+// 🔘 COLORES PARA BOTONES
 // ======================
 val EncabezadoEnDetalleNominas = Color(0xFF4A5565)
 val BtnFlotanteGuardarEnNomiba = Color(0xFF27702A)
 val BtnFlotanteExportarNotas = Color(0xFF03A9F4)
 
-
-// Colores para botones oscuros
+// Botones oscuros (set)
 val ButtonDarkPrimary = Color(0xFF3043B6)
 val ButtonDarkSecondary = Color(0xFF00796B)
 val ButtonDarkSuccess = Color(0xFF15981A)
@@ -46,13 +44,14 @@ val ButtonDarkWarning = Color(0xFFF57C00)
 val ButtonDarkInfo = Color(0xFF6A1B9A)
 val ButtonDarkError = Color(0xFFD32F2F)
 val ButtonDarkBlack = Color(0xFF000000)
-val ButtonWhitePrimary = Color(0xFFFFFFFF)
 val ButtonDarkGray = Color(0xFF616161)
+val ButtonWhitePrimary = Color(0xFFFFFFFF)
 
 // ======================
-// Colores para tabla de nominas
+// 📋 COLORES PARA TABLA DE NÓMINAS
 // ======================
 val BordeTablaGray = Color(0xFF616161)
+
 val FondoEncabezadoPrincipal = Color(0xFF0D47A1)
 val FondoEncabezadoSecundario = Color(0xFF1976D2)
 val FondoEncabezadoSumativa = Color(0xFF4A148C)
@@ -60,15 +59,14 @@ val FondoEncabezadoFinales = Color(0xFF1B5E20)
 
 val FondoFilaPar = Color(0xFFFFFFFF)
 val FondoFilaImpar = Color(0xFFEEEEEE)
+
 val TextoEncabezado = Color.Green
 val TextoAprobado = Color.Black
 val TextoReprobado = Color.Red
 
-
 // ======================
-// Colores para fondos
+// 🌈 COLORES PARA FONDOS (Light palette)
 // ======================
-
 val CelesteClaroLight = Color(0xFFA9D5F5)
 val VerdeClaroLight = Color(0xFF9AD8D1)
 val VerdeClaroLight2 = Color(0xFFD5FFB3)
@@ -79,7 +77,7 @@ val RojoClaroLight = Color(0xFFF5B9B8)
 val GrisClaroLight = Color(0xFFD7D8D9)
 
 // ======================
-// Colores para textos
+// 📝 COLORES PARA TEXTOS
 // ======================
 val TextoBotonClaro = Color(0xFFFFFFFF)
 val TextosClaro = Color(0xFFCDCEDA)
@@ -87,19 +85,14 @@ val TextoOscuro = Color(0xFF18192A)
 val TextoClaroLight = Color(0xFFFFFFFF)
 val TextoOscuroBlack = Color(0xFF070303)
 
-
 // ======================
-// Colores para tablas
+// 🧱 COLORES PARA TABLAS (genéricos)
 // ======================
 val FondoGris = Color(0xFF737373)
 val BordeGris = Color(0xFF737373)
 
-
-
-
-
 // ======================
-// Colores base
+// 🎨 PALETA BASE (Brand/Base)
 // ======================
 
 /** Café oscuro casi negro (RGB: 20,15,7) - Ideal para textos y fondos oscuros */
@@ -133,125 +126,54 @@ val Rust = Color(0xFF863D33)
 val SoftGold = Color(0xFFFFD261)
 
 // ======================
-// Versiones Light Theme (80)
+// ☀️ VERSIONES LIGHT THEME (80)
 // ======================
-
-/** Versión light del café oscuro */
 val DarkBrown80 = Color(0xFF140F07)
-
-/** Versión light del azul marino */
 val NavyBlue80 = Color(0xFF1D2546)
-
-/** Versión light del azul real */
 val RoyalBlue80 = Color(0xFF4C5CA4)
-
-/** Versión light del azul cielo */
 val LightBlue80 = Color(0xFF869EFC)
-
-/** Versión light del azul hielo */
 val IceBlue80 = Color(0xFFD1EBF7)
-
-/** Versión light del rosa fucsia */
 val HotPink80 = Color(0xFFD40062)
-
-/** Versión light del púrpura vino */
 val DeepPurple80 = Color(0xFF843358)
-
-/** Versión light del naranja vibrante */
 val VibrantOrange80 = Color(0xFFFD7724)
-
-/** Versión light del rojo óxido */
 val Rust80 = Color(0xFF863D33)
-
-/** Versión light del dorado suave */
 val SoftGold80 = Color(0xFFFFD261)
 
 // ======================
-// Versiones Dark Theme (40)
+// 🌙 VERSIONES DARK THEME (40)
 // ======================
-
-/** Versión dark del café oscuro - Café cálido más claro */
 val DarkBrown40 = Color(0xFF483920)
-
-/** Versión dark del azul marino - Azul grisáceo */
 val NavyBlue40 = Color(0xFF4A5678)
-
-/** Versión dark del azul real - Azul pastel */
 val RoyalBlue40 = Color(0xFF7D8EC7)
-
-/** Versión dark del azul cielo - Azul lavanda claro */
 val LightBlue40 = Color(0xFFB3C4FF)
-
-/** Versión dark del azul hielo - Blanco azulado */
 val IceBlue40 = Color(0xFFE8F7FF)
-
-/** Versión dark del rosa fucsia - Rosa brillante */
 val HotPink40 = Color(0xFFFF4D97)
-
-/** Versión dark del púrpura vino - Rosa púrpura */
 val DeepPurple40 = Color(0xFFA44D7A)
-
-/** Versión dark del naranja vibrante - Melocotón */
 val VibrantOrange40 = Color(0xFFFF9D5C)
-
-/** Versión dark del rojo óxido - Terracota */
 val Rust40 = Color(0xFFB85A4D)
-
-/** Versión dark del dorado suave - Amarillo crema */
 val SoftGold40 = Color(0xFFFFE194)
 
 // ======================
-// Colores para contenido (OnColors)
+// ✅ COLORES PARA CONTENIDO (OnColors)
 // ======================
-
-/** Color para contenido sobre fondo DarkBrown (blanco) */
 val OnDarkBrown = Color(0xFFFFFFFF)
-
-/** Color para contenido sobre fondo NavyBlue (blanco) */
 val OnNavyBlue = Color(0xFFFFFFFF)
-
-/** Color para contenido sobre fondo RoyalBlue (blanco) */
 val OnRoyalBlue = Color(0xFFFFFFFF)
-
-/** Color para contenido sobre fondo LightBlue (negro) */
 val OnLightBlue = Color(0xFF000000)
-
-/** Color para contenido sobre fondo IceBlue (negro) */
 val OnIceBlue = Color(0xFF000000)
-
-/** Color para contenido sobre fondo HotPink (blanco) */
 val OnHotPink = Color(0xFFFFFFFF)
-
-/** Color para contenido sobre fondo DeepPurple (blanco) */
 val OnDeepPurple = Color(0xFFFFFFFF)
-
-/** Color para contenido sobre fondo VibrantOrange (negro) */
 val OnVibrantOrange = Color(0xFF000000)
-
-/** Color para contenido sobre fondo Rust (blanco) */
 val OnRust = Color(0xFFFFFFFF)
-
-/** Color para contenido sobre fondo SoftGold (negro) */
 val OnSoftGold = Color(0xFF000000)
 
 // ======================
-// Colores legacy (mantenidos por compatibilidad)
+// 🕰️ COLORES LEGACY (compatibilidad)
 // ======================
-
-/** Púrpura claro legacy */
 val Purple80 = Color(0xFFD0BCFF)
-
-/** Púrpura grisáceo legacy */
 val PurpleGrey80 = Color(0xFFCCC2DC)
-
-/** Rosa claro legacy */
 val Pink80 = Color(0xFFEFB8C8)
 
-/** Púrpura oscuro legacy */
 val Purple40 = Color(0xFF6650a4)
-
-/** Púrpura grisáceo oscuro legacy */
 val PurpleGrey40 = Color(0xFF625b71)
-
-/** Rosa oscuro legacy */
 val Pink40 = Color(0xFF7D5260)

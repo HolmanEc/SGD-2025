@@ -1,3 +1,4 @@
+/////////////////////////
 package com.holman.sgd.resources.nominas
 
 import android.content.Context
@@ -49,7 +50,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.auth.FirebaseAuth
 import com.holman.sgd.resources.CustomButton
 import com.holman.sgd.resources.mensajealert
 import com.holman.sgd.ui.theme.BordeGris
@@ -65,7 +66,9 @@ import com.holman.sgd.resources.FondoScreenDefault
 import com.holman.sgd.resources.LoadingDotsOverlay
 import com.holman.sgd.resources.TituloGeneralScreens
 import com.holman.sgd.resources.VistaPreviaTablaExcel
+import com.holman.sgd.resources.calificaciones.TablaConfig
 import com.holman.sgd.resources.components.ContenedorPrincipal
+import com.holman.sgd.resources.components.FirestorePaths
 import org.apache.poi.ss.usermodel.DateUtil
 import java.text.SimpleDateFormat
 import java.util.UUID
@@ -107,7 +110,7 @@ fun CrearNomina(
 
     CompositionLocalProvider(
         LocalTextStyle provides LocalTextStyle.current.merge(TextStyle(color = TextDefaultBlack)),
-                LocalContentColor provides TextDefaultBlack
+        LocalContentColor provides TextDefaultBlack
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             FondoScreenDefault()
@@ -130,81 +133,43 @@ fun CrearNomina(
                         verticalArrangement = Arrangement.spacedBy(2.dp)
                     )
                     {
-                        // ──────────────── INSTITUCIÓN ────────────────
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(BackgroundDefault, shape = RoundedCornerShape(8.dp))
-                        ) {
-                            SelectorFirebase("Institución", "instituciones", institucion) { institucion = it }
+                        Box(modifier = Modifier.fillMaxWidth().background(BackgroundDefault, shape = RoundedCornerShape(8.dp))) {
+                            SelectorFirebase(
+                                label = FirestorePaths.CatalogKeys.INSTITUCIONES_LABEL,
+                                coleccion = FirestorePaths.CatalogKeys.INSTITUCIONES_COL,
+                                valor = institucion
+                            ) { institucion = it }
                         }
 
-                        // ──────────────── FILA DOBLE ────────────────
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            // Columna izquierda
-                            Column(
-                                modifier = Modifier.weight(1f),
-                                verticalArrangement = Arrangement.spacedBy(2.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .background(BackgroundDefault, shape = RoundedCornerShape(8.dp))
-                                ) {
-                                    SelectorFirebase("Docente", "docentes", docente) { docente = it }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            // Columna Izquierda
+                            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Box(Modifier.fillMaxWidth().background(BackgroundDefault, shape = RoundedCornerShape(8.dp))) {
+                                    SelectorFirebase(FirestorePaths.CatalogKeys.DOCENTES_LABEL, FirestorePaths.CatalogKeys.DOCENTES_COL, docente) { docente = it }
                                 }
-
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .background(BackgroundDefault, shape = RoundedCornerShape(8.dp))
-                                ) {
-                                    SelectorFirebase("Curso", "cursos", curso) { curso = it }
+                                Box(Modifier.fillMaxWidth().background(BackgroundDefault, shape = RoundedCornerShape(8.dp))) {
+                                    SelectorFirebase(FirestorePaths.CatalogKeys.CURSOS_LABEL, FirestorePaths.CatalogKeys.CURSOS_COL, curso) { curso = it }
                                 }
-
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .background(BackgroundDefault, shape = RoundedCornerShape(8.dp))
-                                ) {
-                                    SelectorFirebase("Especialidad", "especialidades", especialidad) { especialidad = it }
+                                Box(Modifier.fillMaxWidth().background(BackgroundDefault, shape = RoundedCornerShape(8.dp))) {
+                                    SelectorFirebase(FirestorePaths.CatalogKeys.ESPECIALIDADES_LABEL, FirestorePaths.CatalogKeys.ESPECIALIDADES_COL, especialidad) { especialidad = it }
                                 }
                             }
 
-                            // Columna derecha
-                            Column(
-                                modifier = Modifier.weight(1f),
-                                verticalArrangement = Arrangement.spacedBy(2.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .background(BackgroundDefault, shape = RoundedCornerShape(8.dp))
-                                ) {
-                                    SelectorFirebase("Asignatura", "asignaturas", asignatura) { asignatura = it }
+                            // Columna Derecha
+                            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Box(Modifier.fillMaxWidth().background(BackgroundDefault, shape = RoundedCornerShape(8.dp))) {
+                                    SelectorFirebase(FirestorePaths.CatalogKeys.ASIGNATURAS_LABEL, FirestorePaths.CatalogKeys.ASIGNATURAS_COL, asignatura) { asignatura = it }
                                 }
-
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .background(BackgroundDefault, shape = RoundedCornerShape(8.dp))
-                                ) {
-                                    SelectorFirebase("Paralelo", "paralelos", paralelo) { paralelo = it }
+                                Box(Modifier.fillMaxWidth().background(BackgroundDefault, shape = RoundedCornerShape(8.dp))) {
+                                    SelectorFirebase(FirestorePaths.CatalogKeys.PARALELOS_LABEL, FirestorePaths.CatalogKeys.PARALELOS_COL, paralelo) { paralelo = it }
                                 }
-
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .background(BackgroundDefault, shape = RoundedCornerShape(8.dp))
-                                ) {
-                                    SelectorFirebase("Periodo Lectivo", "periodos", periodo) { periodo = it }
+                                Box(Modifier.fillMaxWidth().background(BackgroundDefault, shape = RoundedCornerShape(8.dp))) {
+                                    SelectorFirebase(FirestorePaths.CatalogKeys.PERIODOS_LABEL, FirestorePaths.CatalogKeys.PERIODOS_COL, periodo) { periodo = it }
                                 }
                             }
                         }
                     }
+
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
@@ -397,6 +362,7 @@ fun CrearNomina(
 
 
 
+
 private val TablaExcelSaver = androidx.compose.runtime.saveable.listSaver<List<List<String>>, ArrayList<String>>(
     save = { tabla -> tabla.map { ArrayList(it) } },
     restore = { guardado -> guardado.map { it.toList() } }
@@ -415,10 +381,11 @@ fun guardarNominaEnFirestore(
     onDuplicate: () -> Unit,
     onError: (String) -> Unit
 ) {
-    val db = FirebaseFirestore.getInstance()
-    val rutaNominas = db.collection("gestionAcademica")
-        .document("gestionNominas")
-        .collection("nominasEstudiantes")
+    val uid = FirebaseAuth.getInstance().currentUser?.uid
+        ?: run { onError("Usuario no autenticado"); return }
+
+    // ✅ RUTA CENTRALIZADA
+    val rutaNominas = FirestorePaths.cursos(uid)
 
     if (datos.isEmpty()) {
         onError("No hay datos para guardar"); return
@@ -444,15 +411,6 @@ fun guardarNominaEnFirestore(
         .addOnSuccessListener { snap ->
             if (!snap.isEmpty) { onDuplicate(); return@addOnSuccessListener }
 
-            // ────────────────────────────────────────────────
-            // Estructura Firestore:
-            // col1 = "ID" (generado)
-            // col2 = "NRO" (valor original del Excel)
-            // col3.. = demás columnas del Excel
-            // ────────────────────────────────────────────────
-            val totalCols = encabezadosExcel.size + 1 // +1 por la nueva col "ID"
-            fun keyCol(i: Int) = "col$i"
-
             val encabezadoFirestore = buildMap<String, Any> {
                 put("col1", "ID")  // ID generado por el sistema
                 put("col2", "NRO") // ID/Número del Excel
@@ -464,11 +422,11 @@ fun guardarNominaEnFirestore(
             val filasTabla = mutableListOf<Map<String, Any>>()
             filasTabla += encabezadoFirestore
 
-            filasExcel.forEachIndexed { index, fila ->
+            filasExcel.forEach { fila ->
                 val idUnico = idUnicoEstudiante()
                 val obj = buildMap<String, Any> {
-                    put("col1", idUnico)                              // ID generado
-                    put("col2", (fila.getOrNull(0) ?: "").toString()) // NRO original
+                    put("col1", idUnico)
+                    put("col2", (fila.getOrNull(0) ?: "").toString())
                     for (i in 1 until encabezadosExcel.size) {
                         put("col${i + 2}", (fila.getOrNull(i) ?: "").toString().trim())
                     }
@@ -493,7 +451,7 @@ fun guardarNominaEnFirestore(
                     docRef.update("idNomina", docRef.id)
                         .addOnFailureListener { /* no bloqueante */ }
 
-                    val insumosCount = com.holman.sgd.resources.calificaciones.TablaConfig.INSUMOS_COUNT
+                    val insumosCount = TablaConfig.INSUMOS_COUNT
                     inicializarCalificacionesPorTrimestres(
                         nominaDocRef = docRef,
                         insumosCount = insumosCount
@@ -512,16 +470,192 @@ fun guardarNominaEnFirestore(
 }
 
 
-
-
 ///
+
 private fun inicializarCalificacionesPorTrimestres(
     nominaDocRef: DocumentReference,
     insumosCount: Int,
     onDone: (Boolean) -> Unit
 ) {
     val TAG = "InitTrimestres"
-    val NOMBRE_INFORME = "InformeAnual"   // ← nombre unificado del documento de informe
+    val NOMBRE_INFORME = FirestorePaths.SECCION_INFORME // ✅ coherente con FirestorePaths ("INFORME.ANUAL")
+
+    fun anyToString(value: Any?): String {
+        return when (value) {
+            null -> ""
+            is String -> value
+            is Number -> value.toString()
+            is Boolean -> value.toString()
+            else -> value.toString()
+        }
+    }
+
+    nominaDocRef.get()
+        .addOnSuccessListener { doc ->
+            if (!doc.exists()) {
+                Log.e(TAG, "❌ Nómina no existe")
+                onDone(false); return@addOnSuccessListener
+            }
+
+            // Leer tabla guardada en la nómina
+            val tabla: List<Map<String, String>> =
+                (doc.get("tabla") as? List<*>)?.mapNotNull { item ->
+                    (item as? Map<*, *>)?.let { raw ->
+                        mapOf(
+                            "col1" to anyToString(raw["col1"]).trim(),
+                            "col2" to anyToString(raw["col2"]).trim(),
+                            "col3" to anyToString(raw["col3"]).trim(),
+                            "col4" to anyToString(raw["col4"]).trim(),
+                        )
+                    }
+                } ?: emptyList()
+
+            if (tabla.size <= 1) {
+                Log.e(TAG, "⚠️ Tabla vacía o solo encabezado")
+                onDone(false); return@addOnSuccessListener
+            }
+
+            val estudiantes = tabla.drop(1) // sin encabezado
+            val secciones = FirestorePaths.SECCIONES_TABLAS_INSUMOS
+
+            val db = nominaDocRef.firestore
+            val now = System.currentTimeMillis()
+
+            // 1) Crear documentos base de secciones + META (Informe SIN pesos)
+            val batch0 = db.batch()
+            secciones.forEach { sec ->
+                val secDoc = FirestorePaths.calificacionesSeccion(nominaDocRef, sec)
+
+                val baseDoc: MutableMap<String, Any> = mutableMapOf(
+                    "seccion" to sec,
+                    "tipo" to if (sec == NOMBRE_INFORME) "INFORME" else "TRIMESTRE",
+                    "createdAt" to now,
+                    "updatedAt" to now
+                )
+
+                if (sec != NOMBRE_INFORME) {
+                    baseDoc["insumosCount"] = insumosCount
+                    baseDoc["weights"] = mapOf("formativa" to 0.7, "sumativa" to 0.3)
+                }
+
+                batch0.set(secDoc, baseDoc)
+            }
+
+            batch0.set(
+                FirestorePaths.calificacionesMeta(nominaDocRef),
+                mapOf("secciones" to secciones, "createdAt" to now)
+            )
+
+            batch0.commit()
+                .addOnSuccessListener {
+                    // 2) Insertar alumnos por sección (≤450 ops por batch)
+                    data class SetOp(val ref: DocumentReference, val data: Any)
+                    val ops = mutableListOf<SetOp>()
+
+                    secciones.forEach { sec ->
+                        estudiantes.forEachIndexed { index, fila ->
+                            val id = fila["col1"].orEmpty().trim()
+                            val nro = fila["col2"].orEmpty().trim()
+                            val ced = fila["col3"].orEmpty().trim()
+                            val nom = fila["col4"].orEmpty().trim()
+                            if (id.isBlank()) return@forEachIndexed
+
+                            val alumnoRef = FirestorePaths.insumoDoc(nominaDocRef, sec, id)
+
+                            val payload: Map<String, Any?> =
+                                if (sec == NOMBRE_INFORME) {
+                                    mapOf(
+                                        "seccion" to sec,
+                                        "numero" to (nro.toIntOrNull() ?: (index + 1)),
+                                        "cedula" to ced,
+                                        "nombre" to nom,
+                                        "PromedioT1" to null,
+                                        "PromedioT2" to null,
+                                        "PromedioT3" to null,
+                                        "Supletorio" to null,
+                                        "PromedioFinal" to null,
+                                        "createdAt" to now,
+                                        "updatedAt" to now
+                                    )
+                                } else {
+                                    val actividades: List<Any?> = List(insumosCount) { null }
+                                    mapOf(
+                                        "seccion" to sec,
+                                        "numero" to (nro.toIntOrNull() ?: (index + 1)),
+                                        "cedula" to ced,
+                                        "nombre" to nom,
+                                        "actividades" to actividades,
+                                        "proyecto" to null,
+                                        "evaluacion" to null,
+                                        "refuerzo" to null,
+                                        "mejora" to null,
+                                        "createdAt" to now,
+                                        "updatedAt" to now
+                                    )
+                                }
+
+                            ops += SetOp(alumnoRef, payload)
+                        }
+                    }
+
+                    val MAX_OPS_PER_BATCH = 450
+                    val batches = mutableListOf<List<SetOp>>()
+                    var i = 0
+                    while (i < ops.size) {
+                        val end = minOf(i + MAX_OPS_PER_BATCH, ops.size)
+                        batches += ops.subList(i, end).toList()
+                        i = end
+                    }
+
+                    fun commitNextBatch(idx: Int) {
+                        if (idx >= batches.size) {
+                            Log.i(TAG, "✅ Secciones (3 trimestres + $NOMBRE_INFORME) creadas")
+                            onDone(true); return
+                        }
+
+                        val batch = db.batch()
+                        batches[idx].forEach { op -> batch.set(op.ref, op.data) }
+
+                        batch.commit()
+                            .addOnSuccessListener { commitNextBatch(idx + 1) }
+                            .addOnFailureListener { e ->
+                                Log.e(TAG, "❌ Falló batch ${idx + 1}: ${e.message}", e)
+                                onDone(false)
+                            }
+                    }
+
+                    if (batches.isEmpty()) onDone(true) else commitNextBatch(0)
+                }
+                .addOnFailureListener { e ->
+                    Log.e(TAG, "❌ No se pudieron crear los docs de secciones: ${e.message}", e)
+                    onDone(false)
+                }
+        }
+        .addOnFailureListener { e ->
+            Log.e(TAG, "❌ Error leyendo nómina: ${e.message}", e)
+            onDone(false)
+        }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+private fun XXinicializarCalificacionesPorTrimestres(
+    nominaDocRef: DocumentReference,
+    insumosCount: Int,
+    onDone: (Boolean) -> Unit
+) {
+    val TAG = "InitTrimestres"
+    val NOMBRE_INFORME = FirestorePaths.SECCION_INFORME
 
     nominaDocRef.get()
         .addOnSuccessListener { doc ->
@@ -549,7 +683,7 @@ private fun inicializarCalificacionesPorTrimestres(
             }
 
             val estudiantes = tabla.drop(1) // sin encabezado
-            val secciones = listOf("PrimerTrimestre", "SegundoTrimestre", "TercerTrimestre", NOMBRE_INFORME)
+            val secciones = FirestorePaths.SECCIONES_TABLAS_INSUMOS
 
             val db = nominaDocRef.firestore
             val now = System.currentTimeMillis()
@@ -557,24 +691,27 @@ private fun inicializarCalificacionesPorTrimestres(
             // 1) Crear documentos base de secciones + _meta (Informe SIN pesos)
             val batch0 = db.batch()
             secciones.forEach { sec ->
-                val secDoc = nominaDocRef.collection("calificaciones").document(sec)
+                // ✅ RUTA CENTRALIZADA
+                val secDoc = FirestorePaths.calificacionesSeccion(nominaDocRef, sec)
 
                 val baseDoc: MutableMap<String, Any> = mutableMapOf(
-                    "seccion" to sec,                                   // nombre de la sección
-                    "tipo" to if (sec == NOMBRE_INFORME) "informe" else "trimestre",
+                    "seccion" to sec,
+                    "tipo" to if (sec == NOMBRE_INFORME) "INFORME" else "TRIMESTRE",
                     "createdAt" to now,
                     "updatedAt" to now
                 )
 
                 if (sec != NOMBRE_INFORME) {
-                    // Solo para trimestres
                     baseDoc["insumosCount"] = insumosCount
                     baseDoc["weights"] = mapOf("formativa" to 0.7, "sumativa" to 0.3)
                 }
+
                 batch0.set(secDoc, baseDoc)
             }
+
+            // ✅ RUTA CENTRALIZADA (_meta)
             batch0.set(
-                nominaDocRef.collection("calificaciones").document("_meta"),
+                FirestorePaths.calificacionesMeta(nominaDocRef),
                 mapOf("secciones" to secciones, "createdAt" to now)
             )
 
@@ -585,7 +722,6 @@ private fun inicializarCalificacionesPorTrimestres(
                     val ops = mutableListOf<SetOp>()
 
                     secciones.forEach { sec ->
-                        val secDoc = nominaDocRef.collection("calificaciones").document(sec)
                         estudiantes.forEachIndexed { index, fila ->
                             val id  = (fila["col1"] as? String)?.trim().orEmpty()
                             val nro = (fila["col2"] as? String)?.trim().orEmpty()
@@ -593,11 +729,11 @@ private fun inicializarCalificacionesPorTrimestres(
                             val nom = (fila["col4"] as? String)?.trim().orEmpty()
                             if (id.isBlank()) return@forEachIndexed
 
-                            val alumnoRef = secDoc.collection("insumos").document(id)
+                            // ✅ RUTA CENTRALIZADA (insumos/{alumnoId})
+                            val alumnoRef = FirestorePaths.insumoDoc(nominaDocRef, sec, id)
 
                             val payload: Map<String, Any?> =
                                 if (sec == NOMBRE_INFORME) {
-                                    // Informe anual: SOLO promedios/supletorio (sin actividades)
                                     mapOf(
                                         "seccion" to sec,
                                         "numero" to (nro.toIntOrNull() ?: (index + 1)),
@@ -612,7 +748,6 @@ private fun inicializarCalificacionesPorTrimestres(
                                         "updatedAt" to now
                                     )
                                 } else {
-                                    // Trimestres: con actividades y campos sumativos
                                     val actividades: List<Any?> = List(insumosCount) { null }
                                     mapOf(
                                         "seccion" to sec,
@@ -753,11 +888,10 @@ fun cargarListadoFirestore(
     coleccion: String,
     onSuccess: (List<String>) -> Unit
 ) {
-    FirebaseFirestore.getInstance()
-        .collection("gestionAcademica")
-        .document("datosGenerales")
-        .collection(coleccion)
-        // 🔹 Orden alfabético por campo "nombre"
+    val uid = FirebaseAuth.getInstance().currentUser?.uid
+        ?: run { onSuccess(emptyList()); return }
+
+    FirestorePaths.datosGeneralesColeccion(uid, coleccion)
         .orderBy("nombre", com.google.firebase.firestore.Query.Direction.ASCENDING)
         .get()
         .addOnSuccessListener { snap ->
@@ -768,8 +902,6 @@ fun cargarListadoFirestore(
             onSuccess(emptyList())
         }
 }
-
-
 
 fun procesarArchivoExcel(context: Context, uri: Uri): List<List<String>> {
     val filas = mutableListOf<List<String>>()
@@ -823,13 +955,9 @@ fun procesarArchivoExcel(context: Context, uri: Uri): List<List<String>> {
     return filas
 }
 
-
-
-
 private fun idUnicoEstudiante(): String {
     return "std_" + UUID.randomUUID().toString().replace("-", "").take(16)
 }
-
 
 fun generarPesos(numCols: Int): List<Float> {
     val base = listOf(5f, 15f, 35f, 30f, 15f) // tu perfil

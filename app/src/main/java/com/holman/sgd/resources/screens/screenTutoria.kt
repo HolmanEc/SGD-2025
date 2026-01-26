@@ -13,18 +13,13 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import com.holman.sgd.R
 import com.holman.sgd.resources.components.ContenedorPrincipal
-import com.holman.sgd.resources.nominas.MenuCardNominas
-import com.holman.sgd.resources.FondoScreenDefault
-import com.holman.sgd.resources.TituloGeneralScreens
-import com.holman.sgd.resources.CustomButton
 import com.holman.sgd.ui.theme.*
 import androidx.compose.material3.Text
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.foundation.background
-import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.layout.BoxWithConstraints
+import com.holman.sgd.resources.components.Transparencia
 
 @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter", "UnusedBoxWithConstraintsScope")
 @Composable
@@ -104,10 +99,11 @@ fun Tutoria(
                                         else -> ({})
                                     }
 
-                                    MenuCardNominas(
+                                    DefaultCard(
                                         title = title,
                                         iconResId = icon,
                                         backgroundColor = Card4,
+                                        backgroundAlpha = Transparencia.DEFAULT,
                                         descriptionCard = desc,
                                         modifier = Modifier.weight(1f),
                                         onClick = onClick

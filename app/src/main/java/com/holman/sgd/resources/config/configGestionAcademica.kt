@@ -1,7 +1,6 @@
 package com.holman.sgd.resources.config
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,9 +19,9 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -46,15 +45,19 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.Query
 import com.holman.sgd.resources.CustomButton
 import com.holman.sgd.resources.FondoScreenDefault
 import com.holman.sgd.resources.TituloGeneralScreens
 import com.holman.sgd.resources.components.ContenedorPrincipal
+import com.holman.sgd.resources.components.FirestorePaths
 import com.holman.sgd.resources.mensajealert
 import com.holman.sgd.resources.screens.isTablet
 import com.holman.sgd.ui.theme.BackgroundDefault
@@ -73,17 +76,11 @@ data class AcademicItem(
 fun GestionAcademicaScreen(
     onNavigateBack: () -> Unit
 ) {
-    // 🔹 Control del botón físico o gesto de retroceso
-    BackHandler(enabled = true) {
-        onNavigateBack()
-    }
+    BackHandler(enabled = true) { onNavigateBack() }
 
-    // 🔹 Contenedor raíz con fondo e interfaz
     Box(modifier = Modifier.fillMaxSize()) {
-        // Fondo global con color + imagen (sin parámetros)
         FondoScreenDefault()
 
-        // Contenido principal encima del fondo
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -98,21 +95,12 @@ fun GestionAcademicaScreen(
                 Card(
                     modifier = Modifier.fillMaxSize(),
                     shape = RoundedCornerShape(0.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = Color.Transparent
-                    )
-                )
-                {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            //.padding(16.dp)
-                    ) {
-                        // 🔹 Título superior
+                    colors = CardDefaults.cardColors(containerColor = Color.Transparent)
+                ) {
+                    Column(modifier = Modifier.fillMaxSize()) {
                         TituloGeneralScreens(texto = "Gestión Académica")
                         Spacer(modifier = Modifier.width(8.dp))
 
-                        // 🔹 Carrusel de tarjetas (LazyRow)
                         val listState = rememberLazyListState()
                         val flingBehavior = rememberSnapFlingBehavior(lazyListState = listState)
 
@@ -121,51 +109,20 @@ fun GestionAcademicaScreen(
                             flingBehavior = flingBehavior,
                             horizontalArrangement = Arrangement.spacedBy(16.dp),
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 16.dp),
-                            modifier = Modifier
-                                .fillMaxSize()
-                        )
-                        {
-                            item {
-                                Box(Modifier.fillParentMaxWidth()) {
-                                    InputCard(Icons.Default.School, "Instituciones", "instituciones")
-                                }
-                            }
-                            item {
-                                Box(Modifier.fillParentMaxWidth()) {
-                                    InputCard(Icons.Default.Person, "Docentes", "docentes")
-                                }
-                            }
-                            item {
-                                Box(Modifier.fillParentMaxWidth()) {
-                                    InputCard(Icons.Default.Class, "Cursos", "cursos")
-                                }
-                            }
-                            item {
-                                Box(Modifier.fillParentMaxWidth()) {
-                                    InputCard(Icons.Default.People, "Paralelos", "paralelos")
-                                }
-                            }
-                            item {
-                                Box(Modifier.fillParentMaxWidth()) {
-                                    InputCard(Icons.Default.AutoStories, "Asignaturas", "asignaturas")
-                                }
-                            }
-                            item {
-                                Box(Modifier.fillParentMaxWidth()) {
-                                    InputCard(Icons.Default.Star, "Especialidades", "especialidades")
-                                }
-                            }
-                            item {
-                                Box(Modifier.fillParentMaxWidth()) {
-                                    InputCard(Icons.Default.Event, "Periodos Lectivos", "periodos")
-                                }
-                            }
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            item { Box(Modifier.fillParentMaxWidth()) { InputCard(Icons.Default.School, FirestorePaths.CatalogKeys.INSTITUCIONES_LABEL, FirestorePaths.CatalogKeys.INSTITUCIONES_COL) } }
+                            item { Box(Modifier.fillParentMaxWidth()) { InputCard(Icons.Default.Person, FirestorePaths.CatalogKeys.DOCENTES_LABEL, FirestorePaths.CatalogKeys.DOCENTES_COL) } }
+                            item { Box(Modifier.fillParentMaxWidth()) { InputCard(Icons.Default.Class, FirestorePaths.CatalogKeys.CURSOS_LABEL, FirestorePaths.CatalogKeys.CURSOS_COL) } }
+                            item { Box(Modifier.fillParentMaxWidth()) { InputCard(Icons.Default.People, FirestorePaths.CatalogKeys.PARALELOS_LABEL, FirestorePaths.CatalogKeys.PARALELOS_COL) } }
+                            item { Box(Modifier.fillParentMaxWidth()) { InputCard(Icons.Default.AutoStories, FirestorePaths.CatalogKeys.ASIGNATURAS_LABEL, FirestorePaths.CatalogKeys.ASIGNATURAS_COL) } }
+                            item { Box(Modifier.fillParentMaxWidth()) { InputCard(Icons.Default.Star, FirestorePaths.CatalogKeys.ESPECIALIDADES_LABEL, FirestorePaths.CatalogKeys.ESPECIALIDADES_COL) } }
+                            item { Box(Modifier.fillParentMaxWidth()) { InputCard(Icons.Default.Event, FirestorePaths.CatalogKeys.PERIODOS_LABEL, FirestorePaths.CatalogKeys.PERIODOS_COL) } }
                         }
                     }
                 }
             }
 
-            // 🔹 Botón persistente al final
             CustomButton(
                 text = "Volver",
                 borderColor = ButtonDarkGray,
@@ -188,11 +145,9 @@ fun InputCard(
     var isLoading by remember { mutableStateOf(true) }
     var editingItem by remember { mutableStateOf<AcademicItem?>(null) }
     var showDeleteDialog by remember { mutableStateOf<AcademicItem?>(null) }
-    val db = FirebaseFirestore.getInstance()
 
     val isTablet = isTablet()
 
-    // Cargar items al iniciar
     LaunchedEffect(coleccion) {
         cargarItems(coleccion) { listaItems ->
             items = listaItems
@@ -208,7 +163,6 @@ fun InputCard(
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
 
-            // Encabezado con ícono + título
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Start,
@@ -230,25 +184,80 @@ fun InputCard(
                 )
             }
 
+
             OutlinedTextField(
                 value = texto,
                 onValueChange = { input ->
-                    texto = if (coleccion.equals("paralelos", ignoreCase = true)) {
-                        // 🔹 Convierte automáticamente a mayúsculas al escribir
-                        input.uppercase()
-                            .filter { it.isLetter() || it.isWhitespace() } // (opcional) solo letras y espacios
-                    } else {
-                        input
+                    val coleccionLower = coleccion.trim().lowercase()
+
+                    texto = when {
+                        // --- LÓGICA PARA PERIODO LECTIVO ---
+                        coleccionLower.contains("periodo") -> {
+                            val soloNumeros = input.filter { it.isDigit() }
+
+                            if (input.length < texto.length) {
+                                // Si el usuario borra mientras está el formato completo "2024 - 2025"
+                                // regresamos a los 3 primeros dígitos para facilitar la edición
+                                if (texto.contains("-") && soloNumeros.length >= 4) {
+                                    soloNumeros.take(3)
+                                } else {
+                                    soloNumeros
+                                }
+                            } else {
+                                when {
+                                    // Al llegar a 4 dígitos, autocompletamos y bloqueamos
+                                    soloNumeros.length == 4 -> {
+                                        val anioInicio = soloNumeros.toIntOrNull() ?: 0
+                                        "$anioInicio - ${anioInicio + 1}"
+                                    }
+                                    // Permitimos escribir mientras sea menos de 4
+                                    soloNumeros.length < 4 -> soloNumeros
+                                    // Si ya está completo, ignoramos cualquier entrada extra
+                                    else -> texto
+                                }
+                            }
+                        }
+
+                        // 1. MAYÚSCULAS TOTALES para Instituciones y Paralelos
+                        coleccionLower == "instituciones" || coleccionLower == "paralelos" -> {
+                            input.uppercase().filter { it.isLetter() || it.isWhitespace() }
+                        }
+
+                        // 2. CAPITALIZAR CADA PALABRA para el resto
+                        else -> {
+                            input.split(" ").joinToString(" ") { palabra ->
+                                if (palabra.isNotEmpty()) {
+                                    palabra.lowercase().replaceFirstChar { char ->
+                                        if (char.isLowerCase()) char.titlecase() else char.toString()
+                                    }
+                                } else {
+                                    ""
+                                }
+                            }
+                        }
                     }
                 },
-                label = { Text(if (editingItem != null) "Editando..." else "Nuevo item") },
+                label = { Text(if (editingItem != null) "Editando..." else "Crear nuevo item") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = if (coleccion.trim().lowercase().contains("periodo")) {
+                        KeyboardType.Number
+                    } else {
+                        KeyboardType.Text
+                    }
+                ),
                 textStyle = LocalTextStyle.current.copy(
                     color = TextDefaultBlack,
                     fontSize = 14.sp
                 )
             )
+            ///////////
+
+
+
+
+
 
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -278,7 +287,7 @@ fun InputCard(
                                         mensajealert(context, "⚠️  Este elemento ya existe")
                                     } else {
                                         crearItem(coleccion, nombreTrimmed) {
-                                            mensajealert(context, "✅  Guardado en $coleccion")
+                                            mensajealert(context, "✅  Guardado en ${coleccion.lowercase()}")
                                             texto = ""
                                             cargarItems(coleccion) { items = it }
                                         }
@@ -353,7 +362,7 @@ fun InputCard(
                         .fillMaxWidth()
                         .weight(1f, fill = false),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
-                ){
+                ) {
                     items(items) { item ->
                         ItemRow(
                             item = item,
@@ -361,9 +370,7 @@ fun InputCard(
                                 editingItem = item
                                 texto = item.nombre
                             },
-                            onDelete = {
-                                showDeleteDialog = item
-                            }
+                            onDelete = { showDeleteDialog = item }
                         )
                     }
                 }
@@ -371,18 +378,13 @@ fun InputCard(
         }
     }
 
-// Dialog de confirmación para eliminar (con sombra visible y fondo BackgroundDefault)
     showDeleteDialog?.let { item ->
-        Dialog(
-            onDismissRequest = { showDeleteDialog = null }
-        ) {
+        Dialog(onDismissRequest = { showDeleteDialog = null }) {
             Surface(
                 shape = RoundedCornerShape(20.dp),
-                color = BackgroundDefault,     // color del cuadro del diálogo
+                color = BackgroundDefault,
                 tonalElevation = 0.dp,
-                shadowElevation = 16.dp,       // << sombra real
-                // Opcional: halo/borde sutil para destacar en fondos muy claros u oscuros
-                // border = BorderStroke(1.dp, Color.Black.copy(alpha = 0.08f)),
+                shadowElevation = 16.dp,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 24.dp)
@@ -437,7 +439,6 @@ fun InputCard(
             }
         }
     }
-
 }
 
 @Composable
@@ -465,10 +466,7 @@ fun ItemRow(
             )
 
             Row {
-                IconButton(
-                    onClick = onEdit,
-                    modifier = Modifier.size(32.dp)
-                ) {
+                IconButton(onClick = onEdit, modifier = Modifier.size(32.dp)) {
                     Icon(
                         Icons.Default.Edit,
                         contentDescription = "Editar",
@@ -476,10 +474,7 @@ fun ItemRow(
                         modifier = Modifier.size(18.dp)
                     )
                 }
-                IconButton(
-                    onClick = onDelete,
-                    modifier = Modifier.size(32.dp)
-                ) {
+                IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
                     Icon(
                         Icons.Default.Delete,
                         contentDescription = "Eliminar",
@@ -492,13 +487,17 @@ fun ItemRow(
     }
 }
 
+// =====================================================
+// ✅ FIRESTORE (AHORA: datosGenerales POR USUARIO)
+// Ruta: gestionAcademica/{uid}/datosGenerales/catalogos/{coleccion}/{item}
+// =====================================================
+
 fun cargarItems(coleccion: String, onSuccess: (List<AcademicItem>) -> Unit) {
-    FirebaseFirestore.getInstance()
-        .collection("gestionAcademica")
-        .document("datosGenerales")
-        .collection(coleccion)
-        // 🔹 Orden alfabético por Firestore (basado en "nombre")
-        .orderBy("nombre", com.google.firebase.firestore.Query.Direction.ASCENDING)
+    val uid = FirebaseAuth.getInstance().currentUser?.uid
+        ?: run { onSuccess(emptyList()); return }
+
+    FirestorePaths.datosGeneralesColeccion(uid, coleccion)
+        .orderBy("nombre", Query.Direction.ASCENDING)
         .get()
         .addOnSuccessListener { documents ->
             val items = documents.map { doc ->
@@ -508,7 +507,6 @@ fun cargarItems(coleccion: String, onSuccess: (List<AcademicItem>) -> Unit) {
                     timestamp = doc.getLong("timestamp") ?: 0L
                 )
             }
-            // 🔸 Seguridad extra: ordena de forma case-insensitive por si hay datos viejos
             onSuccess(items.sortedBy { it.nombre.lowercase() })
         }
         .addOnFailureListener {
@@ -517,7 +515,8 @@ fun cargarItems(coleccion: String, onSuccess: (List<AcademicItem>) -> Unit) {
 }
 
 fun crearItem(coleccion: String, nombre: String, onSuccess: () -> Unit) {
-    // 🔹 Normalización: para "paralelos" forzamos MAYÚSCULAS; resto queda como venga (trim)
+    val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return
+
     val nombreFinal = if (coleccion.equals("paralelos", ignoreCase = true)) {
         nombre.trim().uppercase()
     } else {
@@ -529,35 +528,30 @@ fun crearItem(coleccion: String, nombre: String, onSuccess: () -> Unit) {
         "timestamp" to System.currentTimeMillis()
     )
 
-    FirebaseFirestore.getInstance()
-        .collection("gestionAcademica")
-        .document("datosGenerales")
-        .collection(coleccion)
+    FirestorePaths.datosGeneralesColeccion(uid, coleccion)
         .add(data)
         .addOnSuccessListener { onSuccess() }
 }
 
 fun editarItem(coleccion: String, id: String, nuevoNombre: String, onSuccess: () -> Unit) {
+    val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return
+
     val nombreFinal = if (coleccion.equals("paralelos", ignoreCase = true)) {
         nuevoNombre.trim().uppercase()
     } else {
         nuevoNombre.trim()
     }
 
-    FirebaseFirestore.getInstance()
-        .collection("gestionAcademica")
-        .document("datosGenerales")
-        .collection(coleccion)
+    FirestorePaths.datosGeneralesColeccion(uid, coleccion)
         .document(id)
         .update("nombre", nombreFinal)
         .addOnSuccessListener { onSuccess() }
 }
 
 fun eliminarItem(coleccion: String, id: String, onSuccess: () -> Unit) {
-    FirebaseFirestore.getInstance()
-        .collection("gestionAcademica")
-        .document("datosGenerales")
-        .collection(coleccion)
+    val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return
+
+    FirestorePaths.datosGeneralesColeccion(uid, coleccion)
         .document(id)
         .delete()
         .addOnSuccessListener { onSuccess() }

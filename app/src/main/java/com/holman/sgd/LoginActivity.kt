@@ -29,7 +29,6 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -51,6 +50,7 @@ import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.holman.sgd.resources.CustomButton
+import com.holman.sgd.resources.FondoLogin
 import com.holman.sgd.resources.LoadingDotsOverlay
 import com.holman.sgd.resources.mensajealert
 import com.holman.sgd.resources.screens.isTablet
@@ -61,44 +61,46 @@ import kotlinx.coroutines.delay
 // CONSTANTES / CONFIG
 // ============================================================================
 
-private const val USUARIOS_COLLECTION = "usuarios" // ajusta si se llama distinto
+private const val USUARIOS_COLLECTION = "usuarios"
 private const val PREFS_NAME = "login_prefs_secure"
 private const val KEY_REMEMBER = "remember_email"
 private const val KEY_EMAIL = "email_only"
 
 // ============================================================================
 // ACTIVIDAD PRINCIPAL
+// - Inicializa Firebase
+// - Política: desloguear siempre al abrir
+// - Carga EncryptedSharedPreferences (remember email)
+// - Renderiza LoginScreen y ejecuta login real
 // ============================================================================
-class LoginActivity : ComponentActivity() {
 
+class LoginActivity : ComponentActivity()
+{
     private lateinit var auth: FirebaseAuth
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Firebase (si ya lo inicializas en Application, puedes quitar initializeApp aquí)
+        // --------------------
+        // 1) Firebase + Auth
+        // --------------------
         FirebaseApp.initializeApp(this)
         auth = FirebaseAuth.getInstance()
 
         // Política: siempre deslogueado al abrir (se mantiene)
         auth.signOut()
 
-        // Encrypted SharedPreferences
-        val masterKey = MasterKey.Builder(this)
-            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-            .build()
-
-        val securePrefs = EncryptedSharedPreferences.create(
-            this,
-            PREFS_NAME,
-            masterKey,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-        )
+        // --------------------
+        // 2) Secure Prefs
+        // --------------------
+        val securePrefs = createSecurePrefs(this)
 
         val remembered = securePrefs.getBoolean(KEY_REMEMBER, false)
         val savedEmail = securePrefs.getString(KEY_EMAIL, "") ?: ""
 
+        // --------------------
+        // 3) UI
+        // --------------------
         setContent {
             AppStartSplashGate(
                 minShowMillis = 400L,
@@ -109,17 +111,16 @@ class LoginActivity : ComponentActivity() {
                     initialRemember = remembered,
                     onLogin = { email, password, remember, reportResult ->
                         signInUser(
+                            auth = auth,
                             email = email,
                             password = password,
                             onSuccess = {
-                                if (remember) {
-                                    securePrefs.edit()
-                                        .putBoolean(KEY_REMEMBER, true)
-                                        .putString(KEY_EMAIL, email.trim().lowercase())
-                                        .apply()
-                                } else {
-                                    securePrefs.edit().clear().apply()
-                                }
+                                // Guardar/limpiar remember email (misma lógica)
+                                persistRememberEmail(
+                                    securePrefs = securePrefs,
+                                    remember = remember,
+                                    email = email
+                                )
 
                                 reportResult(true)
                                 goToMainAndFinish()
@@ -135,54 +136,24 @@ class LoginActivity : ComponentActivity() {
         }
     }
 
+    // =========================================================================
+    // Navegación
+    // =========================================================================
     private fun goToMainAndFinish() {
         val intent = Intent(this, MainActivity::class.java)
         intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         startActivity(intent)
         finish()
     }
-
-    private fun signInUser(
-        email: String,
-        password: String,
-        onSuccess: () -> Unit,
-        onError: (String) -> Unit
-    ) {
-        val mail = email.trim().lowercase()
-
-        if (mail.isBlank() || !Patterns.EMAIL_ADDRESS.matcher(mail).matches()) {
-            onError("Ingresa un correo válido.")
-            return
-        }
-        if (password.isBlank()) {
-            onError("Ingresa tu contraseña.")
-            return
-        }
-
-        // ✅ Mejora: usar la instancia auth ya creada
-        auth.signInWithEmailAndPassword(mail, password)
-            .addOnSuccessListener { onSuccess() }
-            .addOnFailureListener { e -> onError(mapFirebaseLoginError(e)) }
-    }
-
-    private fun mapFirebaseLoginError(e: Exception): String {
-        val code = (e as? com.google.firebase.auth.FirebaseAuthException)?.errorCode ?: ""
-        return when (code) {
-            "ERROR_INVALID_EMAIL" -> "El correo no tiene un formato válido."
-            "ERROR_USER_NOT_FOUND" -> "Ese usuario no existe."
-            "ERROR_WRONG_PASSWORD", "ERROR_INVALID_CREDENTIAL", "ERROR_INVALID_LOGIN_CREDENTIALS" ->
-                "Contraseña incorrecta."
-            "ERROR_USER_DISABLED" -> "Esta cuenta está deshabilitada."
-            "ERROR_TOO_MANY_REQUESTS" -> "Demasiados intentos fallidos. Inténtalo más tarde."
-            "ERROR_NETWORK_REQUEST_FAILED" -> "Sin conexión. Verifica tu internet."
-            "ERROR_OPERATION_NOT_ALLOWED" -> "El método de acceso está deshabilitado en Firebase."
-            else -> e.localizedMessage ?: "Error de autenticación ($code)."
-        }
-    }
 }
 
 // ============================================================================
 // COMPOSABLE: LOGIN SCREEN
+// - UI de email + sugerencias
+// - password con toggle
+// - remember checkbox
+// - reset password: directo si email válido, o dialog si no
+// - overlays de carga
 // ============================================================================
 
 @Composable
@@ -191,10 +162,16 @@ fun LoginScreen(
     initialRemember: Boolean,
     onLogin: (String, String, Boolean, (Boolean) -> Unit) -> Unit
 ) {
+    // --------------------
+    // State base
+    // --------------------
     var email by remember { mutableStateOf(initialEmail) }
     var password by remember { mutableStateOf("") }
     var rememberEmail by remember { mutableStateOf(initialRemember) }
 
+    // --------------------
+    // Email suggestions
+    // --------------------
     val commonDomains = remember {
         listOf("demo.com", "gmail.com", "hotmail.com", "outlook.com", "yahoo.com", "icloud.com", "live.com")
     }
@@ -205,21 +182,30 @@ fun LoginScreen(
     val suggestions: List<String> = remember(email) {
         buildEmailSuggestions(email, commonDomains)
     }
-
     val typedDomainPart: String = email.substringAfter("@", missingDelimiterValue = "")
 
+    // --------------------
+    // Focus / Keyboard
+    // --------------------
     val passwordFocusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
 
-    // Colores (los tuyos)
+    // --------------------
+    // UI colors (los tuyos)
+    // --------------------
     val fieldText = TextDefaultWhite
     val labelText = TextDefaultWhite.copy(alpha = 0.90f)
     val hintText = TextDefaultWhite.copy(alpha = 0.75f)
     val focusedLine = ButtonDarkSuccess
     val unfocusedLine = TextDefaultWhite.copy(alpha = 0.55f)
 
+    // --------------------
     // Reset password
+    // --------------------
     val context = LocalContext.current
     val auth = remember { FirebaseAuth.getInstance() }
+
     var showResetDialog by remember { mutableStateOf(false) }
     var resetEmail by remember { mutableStateOf("") }
 
@@ -229,13 +215,9 @@ fun LoginScreen(
     // Overlay reset email
     var sendingResetEmail by rememberSaveable { mutableStateOf(false) }
 
-    val keyboardController = LocalSoftwareKeyboardController.current
-    val focusManager = LocalFocusManager.current
-
-    // ✅ NUEVO: focus requester para el campo del dialog
+    // Focus en dialog
     val resetEmailFocusRequester = remember { FocusRequester() }
 
-    // ✅ NUEVO: al abrir el dialog, pedir foco + mostrar teclado
     LaunchedEffect(showResetDialog) {
         if (showResetDialog) {
             delay(120)
@@ -244,15 +226,16 @@ fun LoginScreen(
         }
     }
 
+    // ========================================================================
+    // UI ROOT
+    // ========================================================================
+
     Box(modifier = Modifier.fillMaxSize()) {
 
+        // --------------------
         // Fondo
-        Image(
-            painter = painterResource(id = R.drawable.fondologin),
-            contentDescription = null,
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop
-        )
+        // --------------------
+        FondoLogin()
 
         Column(
             modifier = Modifier
@@ -263,250 +246,106 @@ fun LoginScreen(
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Logo
-            Image(
-                painter = painterResource(id = R.drawable.logo_launcher),
-                contentDescription = "Logo de la app",
-                modifier = Modifier
-                    .size(110.dp)
-                    .padding(bottom = 16.dp)
-            )
-
-            Text(
-                text = "Bienvenido:",
-                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-                color = TextDefaultWhite,
-                modifier = Modifier.padding(bottom = 28.dp)
-            )
+            LoginHeader()
 
             // ===================== EMAIL =====================
-            Box(modifier = Modifier.fillMaxWidth()) {
-                var textFieldWidthPx by remember { mutableStateOf(0) }
-                val density = LocalDensity.current
+            EmailFieldWithSuggestions(
+                email = email,
+                onEmailChange = { newValue ->
+                    val newEmail = newValue.lowercase()
+                    email = newEmail
 
-                TextField(
-                    value = email,
-                    onValueChange = { newValue ->
-                        val newEmail = newValue.lowercase()
-                        email = newEmail
+                    val newTypedDomain = newEmail.substringAfter("@", missingDelimiterValue = "")
+                    val hasSuggestions = buildEmailSuggestions(newEmail, commonDomains).isNotEmpty()
 
-                        val newTypedDomain = newEmail.substringAfter("@", missingDelimiterValue = "")
-                        val hasSuggestions = buildEmailSuggestions(newEmail, commonDomains).isNotEmpty()
-
-                        suggestionsExpanded =
-                            emailFieldFocused &&
-                                    newEmail.isNotBlank() &&
-                                    (!newEmail.contains("@") || newTypedDomain.isNotEmpty()) &&
-                                    hasSuggestions
-                    },
-                    label = { Text("Correo electrónico", color = labelText) },
-                    placeholder = { Text("tu@correo.com", color = hintText) },
-                    leadingIcon = { Icon(Icons.Filled.Email, contentDescription = null, tint = hintText) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .onFocusChanged { st ->
-                            emailFieldFocused = st.isFocused
-                            suggestionsExpanded =
-                                st.isFocused &&
-                                        email.isNotBlank() &&
-                                        (!email.contains("@") || typedDomainPart.isNotEmpty()) &&
-                                        suggestions.isNotEmpty()
-                        }
-                        .onGloballyPositioned { coords -> textFieldWidthPx = coords.size.width },
-                    keyboardOptions = KeyboardOptions.Default.copy(
-                        keyboardType = KeyboardType.Email,
-                        imeAction = ImeAction.Next
-                    ),
-                    keyboardActions = KeyboardActions(onNext = { passwordFocusRequester.requestFocus() }),
-                    singleLine = true,
-                    colors = TextFieldDefaults.colors(
-                        focusedTextColor = fieldText,
-                        unfocusedTextColor = fieldText,
-                        focusedContainerColor = Color.Transparent,
-                        unfocusedContainerColor = Color.Transparent,
-                        cursorColor = fieldText,
-                        focusedLabelColor = labelText,
-                        unfocusedLabelColor = labelText,
-                        focusedIndicatorColor = focusedLine,
-                        unfocusedIndicatorColor = unfocusedLine
-                    )
-                )
-
-                DropdownMenu(
-                    expanded = suggestionsExpanded,
-                    onDismissRequest = { suggestionsExpanded = false },
-                    properties = PopupProperties(
-                        focusable = false,
-                        dismissOnBackPress = true,
-                        dismissOnClickOutside = true
-                    ),
-                    modifier = Modifier
-                        .width(with(density) { textFieldWidthPx.toDp() })
-                        .heightIn(max = 180.dp)
-                        .background(BackgroundDefault)
-                ) {
-                    suggestions.take(6).forEach { option ->
-                        DropdownMenuItem(
-                            text = { Text(option, fontSize = 14.sp, color = TextDefaultBlack) },
-                            onClick = {
-                                email = option.lowercase()
-                                suggestionsExpanded = false
-                            }
-                        )
-                    }
-                }
-            }
+                    suggestionsExpanded =
+                        emailFieldFocused &&
+                                newEmail.isNotBlank() &&
+                                (!newEmail.contains("@") || newTypedDomain.isNotEmpty()) &&
+                                hasSuggestions
+                },
+                labelText = labelText,
+                hintText = hintText,
+                fieldText = fieldText,
+                focusedLine = focusedLine,
+                unfocusedLine = unfocusedLine,
+                backgroundDropdown = BackgroundDefault,
+                suggestions = suggestions,
+                suggestionsExpanded = suggestionsExpanded,
+                onSuggestionsExpandedChange = { suggestionsExpanded = it },
+                onEmailFieldFocusedChange = { focused ->
+                    emailFieldFocused = focused
+                    suggestionsExpanded =
+                        focused &&
+                                email.isNotBlank() &&
+                                (!email.contains("@") || typedDomainPart.isNotEmpty()) &&
+                                suggestions.isNotEmpty()
+                },
+                onSuggestionPick = { option ->
+                    email = option.lowercase()
+                    suggestionsExpanded = false
+                },
+                onNext = { passwordFocusRequester.requestFocus() }
+            )
 
             Spacer(Modifier.height(16.dp))
 
             // ===================== PASSWORD =====================
-            var showPass by rememberSaveable { mutableStateOf(false) }
+            PasswordField(
+                password = password,
+                onPasswordChange = { password = it },
+                labelText = labelText,
+                hintText = hintText,
+                fieldText = fieldText,
+                focusedLine = focusedLine,
+                unfocusedLine = unfocusedLine,
+                passwordFocusRequester = passwordFocusRequester,
+                enabled = !loggingIn && !sendingResetEmail,
+                onDone = {
+                    keyboardController?.hide()
+                    focusManager.clearFocus(force = true)
 
-            TextField(
-                value = password,
-                onValueChange = { password = it },
-                label = { Text("Contraseña", color = labelText) },
-                placeholder = { Text("••••••••", color = hintText) },
-                leadingIcon = { Icon(Icons.Outlined.Lock, contentDescription = null, tint = hintText) },
-                trailingIcon = {
-                    IconButton(onClick = { showPass = !showPass }) {
-                        Icon(
-                            imageVector = if (showPass) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
-                            contentDescription = null,
-                            tint = hintText
-                        )
+                    loggingIn = true
+                    suggestionsExpanded = false
+
+                    onLogin(email, password, rememberEmail) { success ->
+                        if (!success) loggingIn = false
                     }
-                },
-                visualTransformation = if (showPass) VisualTransformation.None else PasswordVisualTransformation(),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .focusRequester(passwordFocusRequester),
-                singleLine = true,
-                keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(
-                    onDone = {
-                        keyboardController?.hide()
-                        focusManager.clearFocus(force = true)
-
-                        loggingIn = true
-                        suggestionsExpanded = false
-
-                        onLogin(email, password, rememberEmail) { success ->
-                            if (!success) loggingIn = false
-                        }
-                    }
-                ),
-                colors = TextFieldDefaults.colors(
-                    focusedTextColor = fieldText,
-                    unfocusedTextColor = fieldText,
-                    focusedContainerColor = Color.Transparent,
-                    unfocusedContainerColor = Color.Transparent,
-                    cursorColor = fieldText,
-                    focusedLabelColor = labelText,
-                    unfocusedLabelColor = labelText,
-                    focusedIndicatorColor = focusedLine,
-                    unfocusedIndicatorColor = unfocusedLine
-                )
+                }
             )
 
             Spacer(Modifier.height(12.dp))
 
             // ===================== RECORDAR / RESET =====================
-            if (isTablet()) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Checkbox(
-                        checked = rememberEmail,
-                        onCheckedChange = { rememberEmail = it },
-                        enabled = !loggingIn && !sendingResetEmail,
-                        colors = CheckboxDefaults.colors(
-                            checkedColor = ButtonDarkSuccess,
-                            uncheckedColor = TextDefaultWhite,
-                            checkmarkColor = TextDefaultWhite
-                        )
-                    )
-                    Text("Recordar mi correo", color = TextDefaultWhite)
-
-                    Spacer(Modifier.weight(1f))
-
-                    Text(
-                        text = "¿Olvidaste tu contraseña?",
-                        color = TextDefaultWhite.copy(alpha = 0.9f),
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier
-                            .clickable(enabled = !loggingIn && !sendingResetEmail) {
-                                if (email.isNotBlank() && Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
-                                    sendingResetEmail = true
-                                    sendResetEmail(
-                                        auth = auth,
-                                        context = context,
-                                        email = email,
-                                        onFinish = { sendingResetEmail = false }
-                                    )
-                                } else {
-                                    keyboardController?.hide()
-                                    focusManager.clearFocus(force = true)
-
-                                    resetEmail = email
-                                    email = ""
-                                    suggestionsExpanded = false
-                                    showResetDialog = true
-                                }
-                            }
-                            .padding(start = 8.dp)
-                    )
-                }
-            } else {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .wrapContentHeight()
-                        .align(Alignment.CenterHorizontally)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(
-                            checked = rememberEmail,
-                            onCheckedChange = { rememberEmail = it },
-                            enabled = !loggingIn && !sendingResetEmail,
-                            colors = CheckboxDefaults.colors(
-                                checkedColor = ButtonDarkSuccess,
-                                uncheckedColor = TextDefaultWhite,
-                                checkmarkColor = TextDefaultWhite
+            RememberAndResetRow(
+                isTablet = isTablet(),
+                rememberEmail = rememberEmail,
+                onRememberChange = { rememberEmail = it },
+                enabled = !loggingIn && !sendingResetEmail,
+                onResetClick = {
+                    handleResetPasswordClick(
+                        email = email,
+                        onDirectSend = {
+                            sendingResetEmail = true
+                            sendResetEmail(
+                                auth = auth,
+                                context = context,
+                                email = email,
+                                onFinish = { sendingResetEmail = false }
                             )
-                        )
-                        Text("Recordar mi correo", color = TextDefaultWhite)
-                    }
+                        },
+                        onOpenDialog = {
+                            keyboardController?.hide()
+                            focusManager.clearFocus(force = true)
 
-                    Text(
-                        text = "¿Olvidaste tu contraseña?",
-                        color = TextDefaultWhite.copy(alpha = 0.9f),
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.clickable(enabled = !loggingIn && !sendingResetEmail) {
-                            if (email.isNotBlank() && Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
-                                sendingResetEmail = true
-                                sendResetEmail(
-                                    auth = auth,
-                                    context = context,
-                                    email = email,
-                                    onFinish = { sendingResetEmail = false }
-                                )
-                            } else {
-                                keyboardController?.hide()
-                                focusManager.clearFocus(force = true)
-
-                                resetEmail = email
-                                email = ""
-                                suggestionsExpanded = false
-                                showResetDialog = true
-                            }
+                            resetEmail = email
+                            email = ""
+                            suggestionsExpanded = false
+                            showResetDialog = true
                         }
                     )
                 }
-            }
+            )
 
             Spacer(Modifier.height(22.dp))
 
@@ -534,127 +373,450 @@ fun LoginScreen(
     }
 
     // ===================== DIALOG RESET =====================
+    ResetPasswordDialog(
+        visible = showResetDialog,
+        sendingResetEmail = sendingResetEmail,
+        resetEmail = resetEmail,
+        onResetEmailChange = { resetEmail = it.lowercase() },
+        onDismiss = { if (!sendingResetEmail) showResetDialog = false },
+        onSend = {
+            val mail = resetEmail.trim().lowercase()
+            if (mail.isEmpty() || !Patterns.EMAIL_ADDRESS.matcher(mail).matches()) {
+                // OJO: mismo comportamiento original (aunque aquí tu código original llamaba sendResetEmail
+                // incluso si el mail era inválido, lo mantengo)
+                sendResetEmail(auth, context, mail)
+                return@ResetPasswordDialog
+            }
 
-    if (showResetDialog) {
-        MaterialTheme(
-            colorScheme = MaterialTheme.colorScheme.copy(
-                onSurface = TextDefaultBlack,
-                onSurfaceVariant = TextDefaultBlack,
-                onBackground = TextDefaultBlack
+            email = mail
+            showResetDialog = false
+            sendingResetEmail = true
+            sendResetEmail(
+                auth = auth,
+                context = context,
+                email = mail,
+                onFinish = { sendingResetEmail = false }
             )
+        },
+        onCancel = { if (!sendingResetEmail) showResetDialog = false },
+        focusRequester = resetEmailFocusRequester
+    )
+}
+
+// ============================================================================
+// UI PIECES (Composables pequeños y claros)
+// ============================================================================
+/** Encabezado: logo + título */
+@Composable
+private fun LoginHeader() {
+    Image(
+        painter = painterResource(id = R.drawable.logo_launcher),
+        contentDescription = "Logo de la app",
+        modifier = Modifier
+            .size(110.dp)
+            .padding(bottom = 16.dp)
+    )
+
+    Text(
+        text = "Bienvenido:",
+        style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+        color = TextDefaultWhite,
+        modifier = Modifier.padding(bottom = 28.dp)
+    )
+}
+
+/** Campo email con dropdown de sugerencias */
+@Composable
+private fun EmailFieldWithSuggestions(
+    email: String,
+    onEmailChange: (String) -> Unit,
+    labelText: Color,
+    hintText: Color,
+    fieldText: Color,
+    focusedLine: Color,
+    unfocusedLine: Color,
+    backgroundDropdown: Color,
+    suggestions: List<String>,
+    suggestionsExpanded: Boolean,
+    onSuggestionsExpandedChange: (Boolean) -> Unit,
+    onEmailFieldFocusedChange: (Boolean) -> Unit,
+    onSuggestionPick: (String) -> Unit,
+    onNext: () -> Unit
+) {
+    Box(modifier = Modifier.fillMaxWidth()) {
+        var textFieldWidthPx by remember { mutableStateOf(0) }
+        val density = LocalDensity.current
+
+        TextField(
+            value = email,
+            onValueChange = onEmailChange,
+            label = { Text("Correo electrónico", color = labelText) },
+            placeholder = { Text("tu@correo.com", color = hintText) },
+            leadingIcon = { Icon(Icons.Filled.Email, contentDescription = null, tint = hintText) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .onFocusChanged { st -> onEmailFieldFocusedChange(st.isFocused) }
+                .onGloballyPositioned { coords -> textFieldWidthPx = coords.size.width },
+            keyboardOptions = KeyboardOptions.Default.copy(
+                keyboardType = KeyboardType.Email,
+                imeAction = ImeAction.Next
+            ),
+            keyboardActions = KeyboardActions(onNext = { onNext() }),
+            singleLine = true,
+            colors = TextFieldDefaults.colors(
+                focusedTextColor = fieldText,
+                unfocusedTextColor = fieldText,
+                focusedContainerColor = Color.Transparent,
+                unfocusedContainerColor = Color.Transparent,
+                cursorColor = fieldText,
+                focusedLabelColor = labelText,
+                unfocusedLabelColor = labelText,
+                focusedIndicatorColor = focusedLine,
+                unfocusedIndicatorColor = unfocusedLine
+            )
+        )
+
+        DropdownMenu(
+            expanded = suggestionsExpanded,
+            onDismissRequest = { onSuggestionsExpandedChange(false) },
+            properties = PopupProperties(
+                focusable = false,
+                dismissOnBackPress = true,
+                dismissOnClickOutside = true
+            ),
+            modifier = Modifier
+                .width(with(density) { textFieldWidthPx.toDp() })
+                .heightIn(max = 180.dp)
+                .background(backgroundDropdown)
         ) {
-            AlertDialog(
-                onDismissRequest = { if (!sendingResetEmail) showResetDialog = false },
-                title = {
-                    Box(
-                        modifier = Modifier.fillMaxWidth(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "Restablecer contraseña",
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                },
-                text = {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Ingresa tu correo para enviarte el enlace de restablecimiento.")
-                        Spacer(Modifier.height(12.dp))
+            suggestions.take(6).forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(option, fontSize = 14.sp, color = TextDefaultBlack) },
+                    onClick = { onSuggestionPick(option) }
+                )
+            }
+        }
+    }
+}
 
-                        OutlinedTextField(
-                            value = resetEmail,
-                            onValueChange = { resetEmail = it.lowercase() },
-                            label = { Text("Correo electrónico") },
-                            singleLine = true,
-                            enabled = !sendingResetEmail,
-                            modifier = Modifier
-                                .fillMaxWidth(0.75f)
-                                .focusRequester(resetEmailFocusRequester),
-                            keyboardOptions = KeyboardOptions.Default.copy(
-                                keyboardType = KeyboardType.Email,
-                                imeAction = ImeAction.Done
-                            ),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedTextColor = TextDefaultBlack,
-                                unfocusedTextColor = TextDefaultBlack,
+/** Campo password con toggle de visibilidad */
+@Composable
+private fun PasswordField(
+    password: String,
+    onPasswordChange: (String) -> Unit,
+    labelText: Color,
+    hintText: Color,
+    fieldText: Color,
+    focusedLine: Color,
+    unfocusedLine: Color,
+    passwordFocusRequester: FocusRequester,
+    enabled: Boolean,
+    onDone: () -> Unit
+) {
+    var showPass by rememberSaveable { mutableStateOf(false) }
 
-                                // ✅ label siempre negro (sin morado)
-                                focusedLabelColor = TextDefaultBlack,
-                                unfocusedLabelColor = TextDefaultBlack,
-                                disabledLabelColor = TextDefaultBlack.copy(alpha = 0.4f),
-                                errorLabelColor = TextDefaultBlack,
+    TextField(
+        value = password,
+        onValueChange = onPasswordChange,
+        label = { Text("Contraseña", color = labelText) },
+        placeholder = { Text("••••••••", color = hintText) },
+        leadingIcon = { Icon(Icons.Outlined.Lock, contentDescription = null, tint = hintText) },
+        trailingIcon = {
+            IconButton(onClick = { showPass = !showPass }, enabled = enabled) {
+                Icon(
+                    imageVector = if (showPass) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
+                    contentDescription = null,
+                    tint = hintText
+                )
+            }
+        },
+        visualTransformation = if (showPass) VisualTransformation.None else PasswordVisualTransformation(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .focusRequester(passwordFocusRequester),
+        singleLine = true,
+        enabled = enabled,
+        keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Done),
+        keyboardActions = KeyboardActions(onDone = { onDone() }),
+        colors = TextFieldDefaults.colors(
+            focusedTextColor = fieldText,
+            unfocusedTextColor = fieldText,
+            focusedContainerColor = Color.Transparent,
+            unfocusedContainerColor = Color.Transparent,
+            cursorColor = fieldText,
+            focusedLabelColor = labelText,
+            unfocusedLabelColor = labelText,
+            focusedIndicatorColor = focusedLine,
+            unfocusedIndicatorColor = unfocusedLine
+        )
+    )
+}
 
-                                cursorColor = TextDefaultBlack,
+/** Bloque "Recordar mi correo" + "Olvidaste tu contraseña" (tablet / no tablet) */
+@Composable
+private fun RememberAndResetRow(
+    isTablet: Boolean,
+    rememberEmail: Boolean,
+    onRememberChange: (Boolean) -> Unit,
+    enabled: Boolean,
+    onResetClick: () -> Unit
+) {
+    if (isTablet) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Checkbox(
+                checked = rememberEmail,
+                onCheckedChange = onRememberChange,
+                enabled = enabled,
+                colors = CheckboxDefaults.colors(
+                    checkedColor = ButtonDarkSuccess,
+                    uncheckedColor = TextDefaultWhite,
+                    checkmarkColor = TextDefaultWhite
+                )
+            )
+            Text("Recordar mi correo", color = TextDefaultWhite)
 
-                                // ✅ borde fijo (no “engorda” visualmente como la línea del TextField)
-                                focusedBorderColor = ButtonDarkSuccess,
-                                unfocusedBorderColor = TextDefaultBlack.copy(alpha = 0.6f),
-                                disabledBorderColor = TextDefaultBlack.copy(alpha = 0.3f),
-                                errorBorderColor = ButtonDarkSuccess,
+            Spacer(Modifier.weight(1f))
 
-                                // ✅ sin fondo
-                                focusedContainerColor = Color.Transparent,
-                                unfocusedContainerColor = Color.Transparent,
-                                disabledContainerColor = Color.Transparent,
-                                errorContainerColor = Color.Transparent
-                            )
-                        )
+            Text(
+                text = "¿Olvidaste tu contraseña?",
+                color = TextDefaultWhite.copy(alpha = 0.9f),
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier
+                    .clickable(enabled = enabled) { onResetClick() }
+                    .padding(start = 8.dp)
+            )
+        }
+    } else {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier
+                .fillMaxWidth()
+                .wrapContentHeight()
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(
+                    checked = rememberEmail,
+                    onCheckedChange = onRememberChange,
+                    enabled = enabled,
+                    colors = CheckboxDefaults.colors(
+                        checkedColor = ButtonDarkSuccess,
+                        uncheckedColor = TextDefaultWhite,
+                        checkmarkColor = TextDefaultWhite
+                    )
+                )
+                Text("Recordar mi correo", color = TextDefaultWhite)
+            }
 
-                    }
-                },
-                confirmButton = {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Box(modifier = Modifier.weight(1f)) {
-                            CustomButton(
-                                text = "Enviar",
-                                borderColor = ButtonDarkSuccess,
-                                onClick = {
-                                    val mail = resetEmail.trim().lowercase()
-                                    if (mail.isEmpty() || !Patterns.EMAIL_ADDRESS.matcher(mail).matches()) {
-                                        sendResetEmail(auth, context, mail)
-                                        return@CustomButton
-                                    }
-                                    email = mail
-                                    showResetDialog = false
-                                    sendingResetEmail = true
-                                    sendResetEmail(
-                                        auth = auth,
-                                        context = context,
-                                        email = mail,
-                                        onFinish = { sendingResetEmail = false }
-                                    )
-                                }
-                            )
-                        }
-                        Box(modifier = Modifier.weight(1f)) {
-                            CustomButton(
-                                text = "Cancelar",
-                                borderColor = ButtonDarkGray,
-                                onClick = { if (!sendingResetEmail) showResetDialog = false }
-                            )
-                        }
-                    }
-                },
-                dismissButton = {},
-                containerColor = BackgroundDefault
+            Text(
+                text = "¿Olvidaste tu contraseña?",
+                color = TextDefaultWhite.copy(alpha = 0.9f),
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.clickable(enabled = enabled) { onResetClick() }
             )
         }
     }
-
 }
 
+/** Dialog de reset password (se mantiene igual, solo encapsulado) */
+@Composable
+private fun ResetPasswordDialog(
+    visible: Boolean,
+    sendingResetEmail: Boolean,
+    resetEmail: String,
+    onResetEmailChange: (String) -> Unit,
+    onDismiss: () -> Unit,
+    onSend: () -> Unit,
+    onCancel: () -> Unit,
+    focusRequester: FocusRequester
+) {
+    if (!visible) return
+
+    MaterialTheme(
+        colorScheme = MaterialTheme.colorScheme.copy(
+            onSurface = TextDefaultBlack,
+            onSurfaceVariant = TextDefaultBlack,
+            onBackground = TextDefaultBlack
+        )
+    ) {
+        AlertDialog(
+            onDismissRequest = { if (!sendingResetEmail) onDismiss() },
+            title = {
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Text(
+                        text = "Restablecer contraseña",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            },
+            text = {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Ingresa tu correo para enviarte el enlace de restablecimiento.")
+                    Spacer(Modifier.height(12.dp))
+
+                    OutlinedTextField(
+                        value = resetEmail,
+                        onValueChange = onResetEmailChange,
+                        label = { Text("Correo electrónico") },
+                        singleLine = true,
+                        enabled = !sendingResetEmail,
+                        modifier = Modifier
+                            .fillMaxWidth(0.75f)
+                            .focusRequester(focusRequester),
+                        keyboardOptions = KeyboardOptions.Default.copy(
+                            keyboardType = KeyboardType.Email,
+                            imeAction = ImeAction.Done
+                        ),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = TextDefaultBlack,
+                            unfocusedTextColor = TextDefaultBlack,
+
+                            // ✅ label siempre negro (sin morado)
+                            focusedLabelColor = TextDefaultBlack,
+                            unfocusedLabelColor = TextDefaultBlack,
+                            disabledLabelColor = TextDefaultBlack.copy(alpha = 0.4f),
+                            errorLabelColor = TextDefaultBlack,
+
+                            cursorColor = TextDefaultBlack,
+
+                            // ✅ borde fijo
+                            focusedBorderColor = ButtonDarkSuccess,
+                            unfocusedBorderColor = TextDefaultBlack.copy(alpha = 0.6f),
+                            disabledBorderColor = TextDefaultBlack.copy(alpha = 0.3f),
+                            errorBorderColor = ButtonDarkSuccess,
+
+                            // ✅ sin fondo
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            disabledContainerColor = Color.Transparent,
+                            errorContainerColor = Color.Transparent
+                        )
+                    )
+                }
+            },
+            confirmButton = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Box(modifier = Modifier.weight(1f)) {
+                        CustomButton(
+                            text = "Enviar",
+                            borderColor = ButtonDarkSuccess,
+                            onClick = { onSend() }
+                        )
+                    }
+                    Box(modifier = Modifier.weight(1f)) {
+                        CustomButton(
+                            text = "Cancelar",
+                            borderColor = ButtonDarkGray,
+                            onClick = { if (!sendingResetEmail) onCancel() }
+                        )
+                    }
+                }
+            },
+            dismissButton = {},
+            containerColor = BackgroundDefault
+        )
+    }
+}
 
 // ============================================================================
-// FUNCIONES AUXILIARES
+// LÓGICA / HELPERS (Funciones pequeñas y comentadas)
+// ============================================================================
+
+/** Crea EncryptedSharedPreferences (seguro) */
+private fun createSecurePrefs(context: Context) =
+    EncryptedSharedPreferences.create(
+        context,
+        PREFS_NAME,
+        MasterKey.Builder(context)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build(),
+        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+    )
+
+/** Guarda o limpia el email recordado (misma lógica original) */
+private fun persistRememberEmail(
+    securePrefs: android.content.SharedPreferences,
+    remember: Boolean,
+    email: String
+) {
+    if (remember) {
+        securePrefs.edit()
+            .putBoolean(KEY_REMEMBER, true)
+            .putString(KEY_EMAIL, email.trim().lowercase())
+            .apply()
+    } else {
+        securePrefs.edit().clear().apply()
+    }
+}
+
+/** Maneja click de "olvidaste contraseña" sin cambiar lógica */
+private fun handleResetPasswordClick(
+    email: String,
+    onDirectSend: () -> Unit,
+    onOpenDialog: () -> Unit
+) {
+    if (email.isNotBlank() && Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
+        onDirectSend()
+    } else {
+        onOpenDialog()
+    }
+}
+
+/** Login real con FirebaseAuth (mismo comportamiento y mensajes) */
+private fun signInUser(
+    auth: FirebaseAuth,
+    email: String,
+    password: String,
+    onSuccess: () -> Unit,
+    onError: (String) -> Unit
+) {
+    val mail = email.trim().lowercase()
+
+    if (mail.isBlank() || !Patterns.EMAIL_ADDRESS.matcher(mail).matches()) {
+        onError("Ingresa un correo válido.")
+        return
+    }
+    if (password.isBlank()) {
+        onError("Ingresa tu contraseña.")
+        return
+    }
+
+    auth.signInWithEmailAndPassword(mail, password)
+        .addOnSuccessListener { onSuccess() }
+        .addOnFailureListener { e -> onError(mapFirebaseLoginError(e)) }
+}
+
+/** Traduce errores comunes de FirebaseAuth a mensajes amigables */
+private fun mapFirebaseLoginError(e: Exception): String {
+    val code = (e as? com.google.firebase.auth.FirebaseAuthException)?.errorCode ?: ""
+    return when (code) {
+        "ERROR_INVALID_EMAIL" -> "El correo no tiene un formato válido."
+        "ERROR_USER_NOT_FOUND" -> "Ese usuario no existe."
+        "ERROR_WRONG_PASSWORD", "ERROR_INVALID_CREDENTIAL", "ERROR_INVALID_LOGIN_CREDENTIALS" ->
+            "Contraseña incorrecta."
+        "ERROR_USER_DISABLED" -> "Esta cuenta está deshabilitada."
+        "ERROR_TOO_MANY_REQUESTS" -> "Demasiados intentos fallidos. Inténtalo más tarde."
+        "ERROR_NETWORK_REQUEST_FAILED" -> "Sin conexión. Verifica tu internet."
+        "ERROR_OPERATION_NOT_ALLOWED" -> "El método de acceso está deshabilitado en Firebase."
+        else -> e.localizedMessage ?: "Error de autenticación ($code)."
+    }
+}
+
+// ============================================================================
+// FUNCIONES AUXILIARES (Reset password) - MISMA FUNCIÓN ORIGINAL
 // ============================================================================
 
 // Funcion que envia el correo de recuperacion.
@@ -682,15 +844,12 @@ fun sendResetEmail(
         }
         .addOnFailureListener { e ->
 
-            // 1) Si es FirebaseAuthException, aquí viene errorCode (a veces)
             val authCode = (e as? com.google.firebase.auth.FirebaseAuthException)?.errorCode ?: ""
 
-            // 2) Otros tipos comunes (NO traen errorCode)
             val isTooMany =
                 e is com.google.firebase.FirebaseTooManyRequestsException ||
                         authCode == "ERROR_TOO_MANY_REQUESTS" ||
                         authCode == "TOO_MANY_ATTEMPTS_TRY_LATER" ||
-                        // fallback por texto típico (a veces viene así)
                         (e.message?.contains("blocked all requests", ignoreCase = true) == true) ||
                         (e.message?.contains("unusual activity", ignoreCase = true) == true)
 
@@ -739,7 +898,6 @@ fun sendResetEmail(
                 }
 
                 else -> {
-                    // ✅ Genérico 100% en español
                     mensajealert(context, e.localizedMessage ?: "El Sistema tuvo incovenientes. No se pudo enviar el correo.")
                     onFinish()
                 }
@@ -747,16 +905,10 @@ fun sendResetEmail(
         }
 }
 
-//
 // ============================================================================
 // HELPERS (sugerencias email)
 // ============================================================================
 
-/**
- * Construye sugerencias en base a lo que el usuario va escribiendo:
- * - si no hay "@": sugiere localPart + @dominio
- * - si hay "@": filtra dominios que empiezan por lo tipeado
- */
 private fun buildEmailSuggestions(
     email: String,
     commonDomains: List<String>

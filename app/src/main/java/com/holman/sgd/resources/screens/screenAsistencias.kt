@@ -1,9 +1,9 @@
+////////////
+
 package com.holman.sgd.resources
 
 import android.annotation.SuppressLint
-import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -11,28 +11,19 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.*
-import androidx.compose.material3.AlertDialogDefaults.shape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -41,9 +32,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.zIndex
 import androidx.navigation.NavHostController
 import com.google.firebase.firestore.FirebaseFirestore
-import com.holman.sgd.R
 import com.holman.sgd.resources.components.ContenedorPrincipal
-import com.holman.sgd.resources.components.getColorsCardsInicio
 import com.holman.sgd.ui.theme.BackgroundDefault
 import com.holman.sgd.ui.theme.ButtonDarkGray
 import com.holman.sgd.ui.theme.*
@@ -51,8 +40,9 @@ import java.text.SimpleDateFormat
 import java.util.*
 import java.time.Instant
 import java.time.LocalDate
-import java.time.ZoneId
 import java.time.ZoneOffset
+import com.google.firebase.auth.FirebaseAuth
+import com.holman.sgd.resources.components.FirestorePaths
 
 // 🔹 Data class para representar una nómina
 data class NominaResumen(
@@ -98,7 +88,9 @@ fun Asistencias(navController: NavHostController) {
     val context = LocalContext.current
 
     var nominas by remember { mutableStateOf<List<NominaResumen>>(emptyList()) }
+
     var isLoading by remember { mutableStateOf(true) }
+
     var error by remember { mutableStateOf<String?>(null) }
 
     var selectedNomina by remember { mutableStateOf<NominaResumen?>(null) }
@@ -711,12 +703,10 @@ fun cargarAsistenciaExistente(
     onError: (String) -> Unit
 ) {
     val db = FirebaseFirestore.getInstance()
-    db.collection("gestionAcademica")
-        .document("gestionNominas")
-        .collection("nominasEstudiantes")
-        .document(nominaId)
-        .collection("asistencias")
-        .document(fecha)
+    val uid = FirebaseAuth.getInstance().currentUser?.uid
+        ?: run { onError("Usuario no autenticado"); return }
+
+    FirestorePaths.asistenciaDoc(uid, nominaId, fecha)
         .get()
         .addOnSuccessListener { document ->
             if (document.exists()) {
@@ -757,12 +747,9 @@ fun limpiarAsistenciasHuerfanas(
     alumnosActuales: List<EstudianteAsistencia>
 ) {
     val db = FirebaseFirestore.getInstance()
-    val rutaAsistencias = db.collection("gestionAcademica")
-        .document("gestionNominas")
-        .collection("nominasEstudiantes")
-        .document(nominaId)
-        .collection("asistencias")
-        .document(fecha)
+    val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return
+
+    val rutaAsistencias = FirestorePaths.asistenciaDoc(uid, nominaId, fecha)
 
     rutaAsistencias.get().addOnSuccessListener { document ->
         if (document.exists()) {
@@ -810,11 +797,10 @@ fun guardarAsistenciaFirestore(
     onError: (String) -> Unit
 ) {
     val db = FirebaseFirestore.getInstance()
-    val rutaAsistencias = db.collection("gestionAcademica")
-        .document("gestionNominas")
-        .collection("nominasEstudiantes")
-        .document(nominaId)
-        .collection("asistencias")
+    val uid = FirebaseAuth.getInstance().currentUser?.uid
+        ?: run { onError("Usuario no autenticado"); return }
+
+    val rutaAsistencias = FirestorePaths.asistencias(uid, nominaId)
 
     val hayAsistentes = alumnos.any { it.presente }
 
@@ -839,9 +825,10 @@ fun cargarNominasDesdeFirestore(
     onError: (String) -> Unit
 ) {
     val db = FirebaseFirestore.getInstance()
-    db.collection("gestionAcademica")
-        .document("gestionNominas")
-        .collection("nominasEstudiantes")
+    val uid = FirebaseAuth.getInstance().currentUser?.uid
+        ?: run { onError("Usuario no autenticado"); return }
+
+    FirestorePaths.cursos(uid)
         .orderBy("timestamp", com.google.firebase.firestore.Query.Direction.DESCENDING)
         .get()
         .addOnSuccessListener { documents ->
@@ -865,16 +852,18 @@ fun cargarNominasDesdeFirestore(
         }
 }
 
+
+
 fun cargarAlumnosAsistenciaPorNomina(
     nominaId: String,
     onSuccess: (List<EstudianteAsistencia>) -> Unit,
     onError: (String) -> Unit
 ) {
     val db = FirebaseFirestore.getInstance()
-    db.collection("gestionAcademica")
-        .document("gestionNominas")
-        .collection("nominasEstudiantes")
-        .document(nominaId)
+    val uid = FirebaseAuth.getInstance().currentUser?.uid
+        ?: run { onError("Usuario no autenticado"); return }
+
+    FirestorePaths.nominaDoc(uid, nominaId)
         .get()
         .addOnSuccessListener { document ->
             if (!document.exists()) {

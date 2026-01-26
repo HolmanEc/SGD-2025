@@ -1,3 +1,5 @@
+///////////////////
+
 package com.holman.sgd.resources.nominas
 
 import androidx.compose.foundation.background
@@ -18,7 +20,6 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -39,7 +40,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.firebase.firestore.FirebaseFirestore
 import com.holman.sgd.resources.CustomButton
-import com.holman.sgd.resources.NominaResumen
 import com.holman.sgd.resources.cargarNominasDesdeFirestore
 import com.holman.sgd.resources.mensajealert
 import com.holman.sgd.ui.theme.ButtonDarkError
@@ -50,16 +50,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Icon
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.text.input.KeyboardType
 import com.google.firebase.firestore.CollectionReference
 import com.holman.sgd.resources.LoadingDotsOverlay
@@ -73,13 +70,9 @@ import androidx.compose.material3.Scaffold
 import com.holman.sgd.resources.NominaHeaderCard
 import android.annotation.SuppressLint
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Surface
@@ -92,25 +85,22 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import com.holman.sgd.resources.FloatingSaveButton
 import com.holman.sgd.resources.InfoItem
 import com.holman.sgd.resources.NominaReviewCard
 import com.holman.sgd.ui.theme.TextDefaultBlack
-import androidx.compose.ui.zIndex
 import com.google.firebase.firestore.SetOptions
 import com.holman.sgd.resources.FondoScreenDefault
+import com.holman.sgd.resources.NominaResumen
 import com.holman.sgd.resources.TituloGeneralScreens
 import com.holman.sgd.resources.calificaciones.TablaConfig
 import com.holman.sgd.resources.components.ContenedorPrincipal
 import com.holman.sgd.resources.darken
 import com.holman.sgd.resources.lighten
-import java.util.UUID
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.DocumentReference
+import com.holman.sgd.resources.components.FirestorePaths
+import com.holman.sgd.resources.components.generarIdUnicoEstudianteNominaFirebase
 
-
-
-
-private val SECCIONES_CALIF = listOf("PrimerTrimestre", "SegundoTrimestre", "TercerTrimestre", "Informe")
-private const val SUBCOLECCION_ALUMNOS = "insumos"
 
 fun syncCalificacionesSeccionesConTabla(
     nominaId: String,
@@ -119,26 +109,29 @@ fun syncCalificacionesSeccionesConTabla(
     onDone: (Boolean, String?) -> Unit = { _, _ -> }
 ) {
     val db = FirebaseFirestore.getInstance()
-    val nominaRef = db.collection("gestionAcademica")
-        .document("gestionNominas")
-        .collection("nominasEstudiantes")
-        .document(nominaId)
+    val uid = FirebaseAuth.getInstance().currentUser?.uid
+        ?: run { onDone(false, "Usuario no autenticado"); return }
+
+    val nominaRef = FirestorePaths.nominaDoc(uid, nominaId)
 
     val idsActuales = estudiantesActuales.map { it.idUnico }.toSet()
     val now = System.currentTimeMillis()
 
-    // 1) Leer/crear documentos base de cada sección (por si no existen)
-    val baseWrites = SECCIONES_CALIF.map { sec ->
-        val secDoc = nominaRef.collection("calificaciones").document(sec)
+    // 1) Crear/asegurar documentos base de cada sección (por si no existen)
+    val baseWrites = FirestorePaths.SECCIONES_TABLAS_INSUMOS.map { sec ->
+        val secDoc = FirestorePaths.calificacionesSeccion(nominaRef, sec)
+
         val base = mutableMapOf<String, Any>(
             "seccion" to sec,
-            "tipo" to if (sec == "Informe") "informe" else "trimestre",
+            "tipo" to if (sec == FirestorePaths.SECCION_INFORME) "INFORME" else "TRIMESTRE",
             "updatedAt" to now
         )
-        if (sec != "Informe") {
+
+        if (sec != FirestorePaths.SECCION_INFORME) {
             base["insumosCount"] = insumosCount
             base["weights"] = mapOf("formativa" to 0.7, "sumativa" to 0.3)
         }
+
         secDoc.set(base, SetOptions.merge())
     }
 
@@ -147,20 +140,23 @@ fun syncCalificacionesSeccionesConTabla(
             // 2) Por cada sección:
             //    - Leer alumnos existentes
             //    - Borrar huérfanos
-            //    - Crear faltantes (payload por tipo)
+            //    - Crear faltantes / actualizar base
             fun procesarSeccion(idx: Int) {
-                if (idx >= SECCIONES_CALIF.size) {
+                if (idx >= FirestorePaths.SECCIONES_TABLAS_INSUMOS.size) {
                     onDone(true, null); return
                 }
-                val sec = SECCIONES_CALIF[idx]
-                val secDoc = nominaRef.collection("calificaciones").document(sec)
-                val colAlumnos = secDoc.collection(SUBCOLECCION_ALUMNOS)
+
+                val sec = FirestorePaths.SECCIONES_TABLAS_INSUMOS[idx]
+                val secDoc = FirestorePaths.calificacionesSeccion(nominaRef, sec)
+
+                // ✅ Subcolección alumnos/insumos controlada por FirestorePaths
+                val colAlumnos = FirestorePaths.insumos(nominaRef, sec)
 
                 colAlumnos.get()
                     .addOnSuccessListener { snap ->
                         val existentesIds = snap.documents.map { it.id }.toSet()
 
-                        val batchOps = mutableListOf<Pair<com.google.firebase.firestore.DocumentReference, Any?>>()
+                        val batchOps = mutableListOf<Pair<DocumentReference, Any?>>()
 
                         // 2.a) Borrar huérfanos
                         snap.documents.forEach { d ->
@@ -171,10 +167,11 @@ fun syncCalificacionesSeccionesConTabla(
 
                         // 2.b) Crear faltantes / asegurar esquema
                         estudiantesActuales.forEachIndexed { index, est ->
-                            val alumnoRef = colAlumnos.document(est.idUnico)
+                            val alumnoRef = FirestorePaths.insumoDoc(nominaRef, sec, est.idUnico)
+
                             if (est.idUnico !in existentesIds) {
                                 val data: Map<String, Any?> =
-                                    if (sec == "Informe") {
+                                    if (sec == FirestorePaths.SECCION_INFORME) {
                                         mapOf(
                                             "seccion" to sec,
                                             "numero" to (index + 1),
@@ -203,9 +200,10 @@ fun syncCalificacionesSeccionesConTabla(
                                             "updatedAt" to now
                                         )
                                     }
+
                                 batchOps += alumnoRef to data
                             } else {
-                                // Existe: opcionalmente actualiza número/cedula/nombre (merge)
+                                // Existe: actualiza número/cedula/nombre (merge)
                                 val merge = mapOf(
                                     "numero" to (index + 1),
                                     "cedula" to est.cedula,
@@ -216,13 +214,12 @@ fun syncCalificacionesSeccionesConTabla(
                             }
                         }
 
-                        // 2.c) Commit en lotes (≤450 sets/updates/deletes por batch)
+                        // 2.c) Commit en lotes (≤450 ops por batch)
                         val MAX = 450
                         val chunks = batchOps.chunked(MAX)
 
                         fun commitChunk(cidx: Int) {
                             if (cidx >= chunks.size) {
-                                // siguiente sección
                                 procesarSeccion(idx + 1); return
                             }
                             val b = db.batch()
@@ -234,6 +231,7 @@ fun syncCalificacionesSeccionesConTabla(
                                 .addOnSuccessListener { commitChunk(cidx + 1) }
                                 .addOnFailureListener { e -> onDone(false, e.localizedMessage) }
                         }
+
                         if (chunks.isEmpty()) procesarSeccion(idx + 1) else commitChunk(0)
                     }
                     .addOnFailureListener { e -> onDone(false, e.localizedMessage) }
@@ -243,6 +241,128 @@ fun syncCalificacionesSeccionesConTabla(
         }
         .addOnFailureListener { e -> onDone(false, e.localizedMessage) }
 }
+
+
+
+
+
+fun syncAsistenciasConTabla(
+    nominaId: String,
+    estudiantesActuales: List<EstudianteNomina>,
+    onDone: (Boolean, String?) -> Unit = { _, _ -> }
+) {
+    val db = FirebaseFirestore.getInstance()
+    val uid = FirebaseAuth.getInstance().currentUser?.uid
+        ?: run { onDone(false, "Usuario no autenticado"); return }
+
+    val colAsistencias = FirestorePaths.asistencias(uid, nominaId)
+
+    // IDs actuales (orden estable = el orden en que recibes la lista)
+    val idsEnOrden = estudiantesActuales.map { it.idUnico }
+    val idsSet = idsEnOrden.toSet()
+
+    // Para migración legacy: "cedula_XXXXXXXX" -> idUnico actual
+    val cedToId: Map<String, String> = estudiantesActuales
+        .mapNotNull { est ->
+            val ced = est.cedula.trim().uppercase().filter { it.isLetterOrDigit() }
+            if (ced.isBlank()) null else ced to est.idUnico
+        }
+        .toMap()
+
+    fun parseBool(v: Any?): Boolean = when (v) {
+        is Boolean -> v
+        is String -> v.equals("true", ignoreCase = true)
+        is Number -> v.toInt() != 0
+        else -> false
+    }
+
+    colAsistencias.get()
+        .addOnSuccessListener { snap ->
+            if (snap.isEmpty) { onDone(true, null); return@addOnSuccessListener }
+
+            // Guardamos operaciones para batch
+            // payload null => delete
+            val ops = mutableListOf<Pair<DocumentReference, Map<String, Any>?>>()
+
+            snap.documents.forEach { doc ->
+                val data = (doc.data ?: emptyMap<String, Any>()).toMutableMap()
+
+                // 1) Migrar claves legacy "cedula_XXXX" al idUnico actual (si se puede)
+                //    (esto evita que "solo se arregle" al entrar y guardar esa fecha)
+                val migrado = mutableMapOf<String, Boolean>()  // idUnico -> presente
+                data.forEach { (k, v) ->
+                    val presente = parseBool(v)
+                    if (!presente) return@forEach // solo nos importa preservar los true (los false los rellenamos luego)
+
+                    when {
+                        // ya es idUnico actual
+                        k in idsSet -> {
+                            migrado[k] = true
+                        }
+
+                        // legacy: "cedula_XXXXXXXX"
+                        k.startsWith("cedula_", ignoreCase = true) -> {
+                            val ced = k.removePrefix("cedula_").trim().uppercase().filter { it.isLetterOrDigit() }
+                            val id = cedToId[ced]
+                            if (id != null) migrado[id] = true
+                        }
+
+                        // otras claves legacy (nombre/numero/hash): no se pueden mapear de forma segura aquí
+                        else -> Unit
+                    }
+                }
+
+                // 2) Construir mapa CANÓNICO: todos los IDs actuales presentes en el doc
+                //    - Si el doc ya tiene ese id, respeta su valor
+                //    - Si no, false
+                //    - Si migración encontró true, fuerza true
+                var anyTrue = false
+                val nuevo = linkedMapOf<String, Any>()
+
+                for (id in idsEnOrden) {
+                    val actual = parseBool(data[id])
+                    val finalVal = actual || (migrado[id] == true)
+                    if (finalVal) anyTrue = true
+                    nuevo[id] = finalVal
+                }
+
+                // 3) Política asistencia vacía: si no hay ningún true, elimina el doc
+                if (!anyTrue) {
+                    ops += doc.reference to null
+                } else {
+                    ops += doc.reference to nuevo
+                }
+            }
+
+            // 4) Commit por lotes (≤450 ops)
+            val MAX = 450
+            val chunks = ops.chunked(MAX)
+
+            fun commitChunk(i: Int) {
+                if (i >= chunks.size) { onDone(true, null); return }
+                val batch = db.batch()
+                chunks[i].forEach { (ref, payload) ->
+                    if (payload == null) batch.delete(ref)
+                    else batch.set(ref, payload) // overwrite total del doc
+                }
+                batch.commit()
+                    .addOnSuccessListener { commitChunk(i + 1) }
+                    .addOnFailureListener { e -> onDone(false, e.localizedMessage) }
+            }
+
+            if (chunks.isEmpty()) onDone(true, null) else commitChunk(0)
+        }
+        .addOnFailureListener { e ->
+            onDone(false, e.localizedMessage ?: "Error sincronizando asistencias")
+        }
+}
+
+
+
+
+
+
+
 
 
 @Composable
@@ -258,9 +378,6 @@ fun revisarNomina(onBack: () -> Unit)
     var nominaIdAbierta by rememberSaveable { mutableStateOf<String?>(null) }
     var headerColorArgb by rememberSaveable { mutableStateOf<Int?>(null) }
 
-    // Estados de navegación interna (no necesitan persistir como objeto)
-    // ❌ var nominaAEditar by remember { ... }  ← ya no se usa
-    // ❌ var headerColorSelected by remember { ... }  ← ya no se usa
 
     // Confirmación de borrado
     var nominaAEliminar by remember { mutableStateOf<NominaResumen?>(null) }
@@ -367,7 +484,7 @@ fun revisarNomina(onBack: () -> Unit)
                     else -> Column(
                         modifier = Modifier
                             .fillMaxSize()
-                            //.padding(start = 16.dp, top = 16.dp, end = 16.dp)
+                        //.padding(start = 16.dp, top = 16.dp, end = 16.dp)
                     ) {
                         TituloGeneralScreens(texto = "Nóminas Guardadas")
                         Spacer(modifier = Modifier.width(8.dp))
@@ -1026,7 +1143,7 @@ fun ScreenRevisarDetalleNomina(
                                 val cedEst = est.cedula.trim().uppercase().filter { c -> c.isLetterOrDigit() }
                                 val nomEst = est.nombre.trim().uppercase().filter { c -> c.isLetter() || c.isWhitespace() }
 
-                                cedEst == cedNorm || nomEst == nomNorm   // <-- AQUÍ EL CONTROL QUE PEDISTE
+                                cedEst == cedNorm || nomEst == nomNorm
                             }
 
                             if (yaExiste) {
@@ -1035,7 +1152,7 @@ fun ScreenRevisarDetalleNomina(
                             }
 
                             val nuevo = EstudianteNomina(
-                                idUnico = generarIdUnicoEstudianteNomina(cedNorm, nomNorm),
+                                idUnico = generarIdUnicoEstudianteNominaFirebase(cedNorm, nomNorm),
                                 cedula = cedNorm,
                                 nombre = nomNorm,
                                 representante = "",
@@ -1075,6 +1192,9 @@ fun existeNominaIgualPorCampos(
     onError: (String) -> Unit
 ) {
     val db = FirebaseFirestore.getInstance()
+    val uid = FirebaseAuth.getInstance().currentUser?.uid
+        ?: run { onError("Usuario no autenticado"); onResult(false); return }
+
 
     // 🔤 Normalizamos todos los campos a minúsculas antes de consultar
     val instNorm = institucion.trim().lowercase()
@@ -1085,9 +1205,7 @@ fun existeNominaIgualPorCampos(
     val especNorm = especialidad.trim().lowercase()
     val periodoNorm = periodo.trim().lowercase()
 
-    db.collection("gestionAcademica")
-        .document("gestionNominas")
-        .collection("nominasEstudiantes")
+    FirestorePaths.cursos(uid)
         .get()
         .addOnSuccessListener { snap ->
             val hayDuplicado = snap.documents.any { doc ->
@@ -1117,6 +1235,9 @@ fun actualizarDatosNomina(
     onError: (String) -> Unit
 ) {
     val db = FirebaseFirestore.getInstance()
+    val uid = FirebaseAuth.getInstance().currentUser?.uid
+        ?: run { onError("Usuario no autenticado"); return }
+
 
     val data = mapOf(
         "institucion" to nominaActualizada.institucion,
@@ -1128,10 +1249,7 @@ fun actualizarDatosNomina(
         "periodo" to nominaActualizada.periodo
     )
 
-    val docNomina = db.collection("gestionAcademica")
-        .document("gestionNominas")
-        .collection("nominasEstudiantes")
-        .document(nominaId)
+    val docNomina = FirestorePaths.nominaDoc(uid, nominaId)
 
     docNomina.set(data, SetOptions.merge())
         .addOnSuccessListener {
@@ -1143,55 +1261,6 @@ fun actualizarDatosNomina(
         }
 }
 
-fun asegurarCalificacionesParaEstudiantes(
-    nominaId: String,
-    estudiantesActuales: List<EstudianteNomina>,
-    onDone: () -> Unit = {}
-) {
-    val db = FirebaseFirestore.getInstance()
-    val nominaRef = db.collection("gestionAcademica")
-        .document("gestionNominas")
-        .collection("nominasEstudiantes")
-        .document(nominaId)
-
-    val califRef = nominaRef.collection("calificaciones")
-
-    // 1) Leer _config para saber cuántos insumos formativos usar (fallback si no está)
-    califRef.document("_config").get().addOnSuccessListener { cfg ->
-        val insumosCount = (cfg.getLong("insumosCount") ?: TablaConfig.INSUMOS_COUNT.toLong()).toInt()
-
-        // 2) Leer existentes para no duplicar
-        califRef.get().addOnSuccessListener { snap ->
-            val existentes = snap.documents.map { it.id }.toSet()
-            val batch = db.batch()
-
-            estudiantesActuales.forEachIndexed { index, est ->
-                val id = est.idUnico
-                if (id !in existentes) {
-                    val docRef = califRef.document(id)
-                    val data = mapOf(
-                        "numero" to (index + 1),
-                        "cedula" to est.cedula,
-                        "nombre" to est.nombre,
-                        "actividades" to List(insumosCount) { null },
-                        "proyecto" to null,
-                        "evaluacion" to null,
-                        "refuerzo" to null,
-                        "mejora" to null,
-                        "updatedAt" to System.currentTimeMillis()
-                    )
-                    batch.set(docRef, data)
-                }
-            }
-
-            if (!snap.isEmpty || estudiantesActuales.isNotEmpty()) {
-                batch.commit().addOnCompleteListener { onDone() }
-            } else {
-                onDone()
-            }
-        }.addOnFailureListener { onDone() }
-    }.addOnFailureListener { onDone() }
-}
 data class EstudianteNomina(
     val idUnico: String,          // ID generado/estable
     var cedula: String,
@@ -1200,34 +1269,35 @@ data class EstudianteNomina(
     var contacto: String = ""
 )
 
-fun generarIdUnicoEstudianteNomina(cedula: String, nombre: String): String {
-    return "legacy_${(cedula.ifEmpty { nombre }).uppercase().hashCode()}"
-}
-
 fun cargarEstudiantesDeNomina(
     nominaId: String,
     onSuccess: (List<EstudianteNomina>) -> Unit,
     onError: (String) -> Unit
 ) {
-    val db = FirebaseFirestore.getInstance()
-    db.collection("gestionAcademica")
-        .document("gestionNominas")
-        .collection("nominasEstudiantes")
-        .document(nominaId)
+    val uid = FirebaseAuth.getInstance().currentUser?.uid
+        ?: run { onError("Usuario no autenticado"); return }
+
+    // ✅ USAMOS LA RUTA DEFINIDA EN TU OBJECT FirestorePaths
+    FirestorePaths.nominaDoc(uid, nominaId)
         .get()
         .addOnSuccessListener { doc ->
-            if (!doc.exists()) { onError("No existe la nómina"); return@addOnSuccessListener }
+            if (!doc.exists()) {
+                onError("No existe la nómina en la ruta: ${doc.reference.path}")
+                return@addOnSuccessListener
+            }
 
             @Suppress("UNCHECKED_CAST")
             val tabla = (doc.get("tabla") as? List<Map<String, Any?>>).orEmpty()
-            if (tabla.isEmpty()) { onSuccess(emptyList()); return@addOnSuccessListener }
+            if (tabla.isEmpty()) {
+                onSuccess(emptyList())
+                return@addOnSuccessListener
+            }
 
-            // Encabezado (primera fila) para detectar nombres de columnas
+            // --- Lógica de detección de columnas (se mantiene igual) ---
             val header = tabla.first()
 
             fun findIndexByTitle(vararg posibles: String): Int? {
                 val want = posibles.map { it.trim().uppercase() }.toSet()
-                // header = { "col1" -> "ID", "col2" -> "NRO", "col3" -> "CÉDULA", ... }
                 header.entries.forEach { (k, v) ->
                     if (k.startsWith("col") && (v as? String)?.trim()?.uppercase() in want) {
                         return k.removePrefix("col").toIntOrNull()
@@ -1237,7 +1307,6 @@ fun cargarEstudiantesDeNomina(
             }
 
             val idxID   = findIndexByTitle("ID") ?: 1
-            val idxNRO  = findIndexByTitle("NRO") ?: 2  // solo por compatibilidad si lo usas
             val idxCed  = findIndexByTitle("CÉDULA", "CEDULA") ?: 3
             val idxNom  = findIndexByTitle("ESTUDIANTE", "ALUMNO", "NOMBRE") ?: 4
             val idxRep  = findIndexByTitle("REPRESENTANTE", "TUTOR", "APODERADO") ?: 5
@@ -1255,7 +1324,7 @@ fun cargarEstudiantesDeNomina(
                 val con = get(row, idxCont)
 
                 EstudianteNomina(
-                    idUnico = id ?: generarIdUnicoEstudianteNomina(ced, nom),
+                    idUnico = id ?: generarIdUnicoEstudianteNominaFirebase(ced, nom),
                     cedula = ced,
                     nombre = nom,
                     representante = rep,
@@ -1270,8 +1339,6 @@ fun cargarEstudiantesDeNomina(
         }
 }
 
-
-//
 fun actualizarEstudiantesDeNomina(
     nominaId: String,
     estudiantes: List<EstudianteNomina>,
@@ -1279,10 +1346,10 @@ fun actualizarEstudiantesDeNomina(
     onError: (String) -> Unit
 ) {
     val db = FirebaseFirestore.getInstance()
-    val nominaRef = db.collection("gestionAcademica")
-        .document("gestionNominas")
-        .collection("nominasEstudiantes")
-        .document(nominaId)
+    val uid = FirebaseAuth.getInstance().currentUser?.uid
+        ?: run { onError("Usuario no autenticado"); return }
+
+    val nominaRef = FirestorePaths.nominaDoc(uid, nominaId)
 
     // Encabezado canónico
     val encabezado = mapOf(
@@ -1307,95 +1374,33 @@ fun actualizarEstudiantesDeNomina(
 
     nominaRef.update("tabla", filas)
         .addOnSuccessListener {
-            // Mantiene tu sincronización de calificaciones (solo usa id/cedula/nombre)
+            // 1) Sincroniza calificaciones (como ya lo tienes)
             syncCalificacionesSeccionesConTabla(
                 nominaId = nominaId,
                 estudiantesActuales = estudiantes,
                 insumosCount = TablaConfig.INSUMOS_COUNT
             ) { ok, err ->
-                if (!ok) onError(err ?: "No se pudo sincronizar calificaciones") else onSuccess()
+                if (!ok) {
+                    onError(err ?: "No se pudo sincronizar calificaciones")
+                    return@syncCalificacionesSeccionesConTabla
+                }
+
+                // 2) ✅ NUEVO: Sincroniza TODAS las asistencias guardadas (todas las fechas)
+                syncAsistenciasConTabla(
+                    nominaId = nominaId,
+                    estudiantesActuales = estudiantes
+                ) { okAsis, errAsis ->
+                    if (!okAsis) {
+                        onError(errAsis ?: "No se pudo sincronizar asistencias")
+                    } else {
+                        onSuccess()
+                    }
+                }
             }
         }
         .addOnFailureListener { e ->
             onError(e.localizedMessage ?: "Error al actualizar la tabla de la nómina")
         }
-}
-
-
-
-
-fun limpiarTodasLasAsistenciasHuerfanas(
-    nominaId: String,
-    estudiantesActuales: List<EstudianteNomina>
-) {
-    val db = FirebaseFirestore.getInstance()
-    val rutaAsistencias = db.collection("gestionAcademica")
-        .document("gestionNominas")
-        .collection("nominasEstudiantes")
-        .document(nominaId)
-        .collection("asistencias")
-
-    // Obtener todos los documentos de asistencias
-    rutaAsistencias.get().addOnSuccessListener { querySnapshot ->
-        val idsActuales = estudiantesActuales.map { it.idUnico }.toSet()
-        val nombresActuales = estudiantesActuales.map { it.nombre }.toSet()
-
-        querySnapshot.documents.forEach { document ->
-            val asistenciaActual = document.data?.toMutableMap() ?: mutableMapOf()
-            var huboLimpieza = false
-
-            val iterator = asistenciaActual.iterator()
-            while (iterator.hasNext()) {
-                val entry = iterator.next()
-                val claveAsistencia = entry.key
-
-                // Verificar si la clave corresponde a un estudiante actual
-                val esEstudianteActual = idsActuales.contains(claveAsistencia) ||
-                        nombresActuales.contains(claveAsistencia)
-
-                if (!esEstudianteActual) {
-                    iterator.remove()
-                    huboLimpieza = true
-                }
-            }
-
-            // Actualizar documento si hubo limpieza
-            if (huboLimpieza) {
-                if (asistenciaActual.isEmpty()) {
-                    document.reference.delete()
-                } else {
-                    document.reference.set(asistenciaActual)
-                }
-            }
-        }
-    }
-}
-
-fun limpiarCalificacionesHuerfanas(
-    nominaId: String,
-    estudiantesActuales: List<EstudianteNomina>
-) {
-    val db = FirebaseFirestore.getInstance()
-    val idsActuales = estudiantesActuales.map { it.idUnico }.toSet()
-
-    val colCalificaciones = db.collection("gestionAcademica")
-        .document("gestionNominas")
-        .collection("nominasEstudiantes")
-        .document(nominaId)
-        .collection("calificaciones")
-
-    colCalificaciones.get().addOnSuccessListener { snap ->
-        val batch = db.batch()
-        snap.documents.forEach { doc ->
-            val id = doc.id
-            if (!idsActuales.contains(id)) {
-                batch.delete(doc.reference) // ← borrar huérfano
-            }
-        }
-        if (!snap.isEmpty) {
-            batch.commit()
-        }
-    }
 }
 
 fun eliminarNominaFirebaseCompleta(
@@ -1405,12 +1410,16 @@ fun eliminarNominaFirebaseCompleta(
     onError: (String) -> Unit
 ) {
     val db = FirebaseFirestore.getInstance()
-    val docRef = db.collection("gestionAcademica")
-        .document("gestionNominas")
-        .collection("nominasEstudiantes")
-        .document(nominaId)
+    val uid = FirebaseAuth.getInstance().currentUser?.uid
+        ?: run { onError("Usuario no autenticado"); return }
 
-    fun borrarColeccionPlano(colRef: CollectionReference, onSubDone: () -> Unit, onSubError: (Exception) -> Unit) {
+    val docRef = FirestorePaths.nominaDoc(uid, nominaId)
+
+    fun borrarColeccionPlano(
+        colRef: CollectionReference,
+        onSubDone: () -> Unit,
+        onSubError: (Exception) -> Unit
+    ) {
         colRef.limit(500).get()
             .addOnSuccessListener { snap ->
                 if (snap.isEmpty) { onSubDone(); return@addOnSuccessListener }
@@ -1423,24 +1432,30 @@ fun eliminarNominaFirebaseCompleta(
             .addOnFailureListener(onSubError)
     }
 
-    fun borrarColeccionCalificacionesDeep(califRef: CollectionReference, onSubDone: () -> Unit, onSubError: (Exception) -> Unit) {
+    fun borrarCalificacionesDeep(
+        califRef: CollectionReference,
+        onSubDone: () -> Unit,
+        onSubError: (Exception) -> Unit
+    ) {
         califRef.get()
             .addOnSuccessListener { snap ->
-                // Borra subcolecciones "insumos" de cada sección y luego el doc de sección
                 fun procesarSeccion(i: Int) {
                     if (i >= snap.documents.size) { onSubDone(); return }
+
                     val secDoc = snap.documents[i]
+
                     if (secDoc.id.startsWith("_")) {
-                        // docs meta; delete directo
                         secDoc.reference.delete()
                             .addOnSuccessListener { procesarSeccion(i + 1) }
                             .addOnFailureListener(onSubError)
                         return
                     }
-                    val alumnosCol = secDoc.reference.collection(SUBCOLECCION_ALUMNOS)
-                    borrarColeccionPlano(alumnosCol,
+
+                    val alumnosCol = FirestorePaths.insumos(docRef, secDoc.id)
+
+                    borrarColeccionPlano(
+                        colRef = alumnosCol,
                         onSubDone = {
-                            // después de limpiar alumnos, borra el doc de la sección
                             secDoc.reference.delete()
                                 .addOnSuccessListener { procesarSeccion(i + 1) }
                                 .addOnFailureListener(onSubError)
@@ -1460,22 +1475,32 @@ fun eliminarNominaFirebaseCompleta(
                 .addOnFailureListener { e -> onError(e.localizedMessage ?: "Error al borrar nómina") }
             return
         }
-        val nombre = subcolecciones[index]
-        val colRef = docRef.collection(nombre)
-        if (nombre == "calificaciones") {
-            borrarColeccionCalificacionesDeep(
-                califRef = colRef,
-                onSubDone = { borrarSiguienteSubcoleccion(index + 1) },
-                onSubError = { e -> onError(e.localizedMessage ?: "Error al borrar calificaciones") }
-            )
-        } else {
-            borrarColeccionPlano(
-                colRef = colRef,
-                onSubDone = { borrarSiguienteSubcoleccion(index + 1) },
-                onSubError = { e -> onError(e.localizedMessage ?: "Error al borrar subcolección: $nombre") }
-            )
+
+        when (subcolecciones[index]) {
+            "asistencias" -> {
+                val colRef = FirestorePaths.asistencias(uid, nominaId)
+                borrarColeccionPlano(
+                    colRef = colRef,
+                    onSubDone = { borrarSiguienteSubcoleccion(index + 1) },
+                    onSubError = { e -> onError(e.localizedMessage ?: "Error al borrar asistencias") }
+                )
+            }
+
+            "calificaciones" -> {
+                val califRef = FirestorePaths.calificaciones(docRef)
+                borrarCalificacionesDeep(
+                    califRef = califRef,
+                    onSubDone = { borrarSiguienteSubcoleccion(index + 1) },
+                    onSubError = { e -> onError(e.localizedMessage ?: "Error al borrar calificaciones") }
+                )
+            }
+
+            else -> {
+                onError("Subcolección no permitida: ${subcolecciones[index]}")
+            }
         }
     }
+
     borrarSiguienteSubcoleccion(0)
 }
 
@@ -1977,122 +2002,3 @@ private fun AddEstudianteDialog(
 
     LaunchedEffect(Unit) { focusCedula.requestFocus() }
 }
-
-
-
-
-
-
-private fun idUnicoEstudiante(): String =
-    "std_" + UUID.randomUUID().toString().replace("-", "").take(16)
-
-fun crearEstudianteVacio(): EstudianteNomina =
-    EstudianteNomina(idUnico = idUnicoEstudiante(), cedula = "", nombre = "")
-
-// ------------
-
-
-
-fun actualizarEstudiantesDeNominaX(
-    nominaId: String,
-    estudiantes: List<EstudianteNomina>,
-    onSuccess: () -> Unit,
-    onError: (String) -> Unit
-) {
-    val db = FirebaseFirestore.getInstance()
-    val nominaRef = db.collection("gestionAcademica")
-        .document("gestionNominas")
-        .collection("nominasEstudiantes")
-        .document(nominaId)
-
-    // Construir tabla con el nuevo orden (col1=ID, col2=Nro, col3=Cédula, col4=Estudiante)
-    val encabezado = mapOf(
-        "col1" to "ID",
-        "col2" to "Nro",
-        "col3" to "Cédula",
-        "col4" to "Estudiante"
-    )
-
-    val filas = listOf(encabezado) + estudiantes.mapIndexed { index, est ->
-        mapOf(
-            "col1" to est.idUnico,                // ✅ ID inmutable (ya existente)
-            "col2" to (index + 1).toString(),     // Nro
-            "col3" to est.cedula,
-            "col4" to est.nombre
-        )
-    }
-
-    nominaRef.update("tabla", filas)
-        .addOnSuccessListener {
-            // Asegurar calificaciones y limpiar huérfanos (firmas iguales a tus funciones actuales)
-            asegurarCalificacionesParaEstudiantes(
-                nominaId = nominaId,
-                estudiantesActuales = estudiantes
-            ) {
-                limpiarCalificacionesHuerfanas(
-                    nominaId = nominaId,
-                    estudiantesActuales = estudiantes
-                )
-                limpiarTodasLasAsistenciasHuerfanas(
-                    nominaId = nominaId,
-                    estudiantesActuales = estudiantes
-                )
-                onSuccess()
-            }
-        }
-        .addOnFailureListener { e ->
-            onError(e.localizedMessage ?: "Error al actualizar la tabla de la nómina")
-        }
-}
-
-fun eliminarNominaFirebaseCompletaX(
-    nominaId: String,
-    subcolecciones: List<String> = listOf("asistencias", "calificaciones"),
-    onSuccess: () -> Unit,
-    onError: (String) -> Unit
-) {
-    val db = FirebaseFirestore.getInstance()
-    val docRef = db.collection("gestionAcademica")
-        .document("gestionNominas")
-        .collection("nominasEstudiantes")
-        .document(nominaId)
-
-    fun borrarSubcoleccionEnLotes(
-        colRef: CollectionReference,
-        onSubDone: () -> Unit,
-        onSubError: (Exception) -> Unit
-    ) {
-        colRef.limit(500).get()
-            .addOnSuccessListener { snap ->
-                if (snap.isEmpty) {
-                    onSubDone(); return@addOnSuccessListener
-                }
-                val batch = db.batch()
-                snap.documents.forEach { batch.delete(it.reference) }
-                batch.commit()
-                    .addOnSuccessListener { borrarSubcoleccionEnLotes(colRef, onSubDone, onSubError) }
-                    .addOnFailureListener(onSubError)
-            }
-            .addOnFailureListener(onSubError)
-    }
-
-    fun borrarSiguienteSubcoleccion(index: Int) {
-        if (index >= subcolecciones.size) {
-            docRef.delete()
-                .addOnSuccessListener { onSuccess() }
-                .addOnFailureListener { e -> onError(e.localizedMessage ?: "Error al borrar nómina") }
-            return
-        }
-        val nombre = subcolecciones[index]
-        borrarSubcoleccionEnLotes(
-            colRef = docRef.collection(nombre),
-            onSubDone = { borrarSiguienteSubcoleccion(index + 1) },
-            onSubError = { e -> onError(e.localizedMessage ?: "Error al borrar subcolección: $nombre") }
-        )
-    }
-    borrarSiguienteSubcoleccion(0)
-}
-
-
-
-

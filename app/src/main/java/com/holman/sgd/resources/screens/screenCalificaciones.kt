@@ -1,4 +1,4 @@
-package com.holman.sgd.resources
+package com.holman.sgd.resources.screens
 
 import android.annotation.SuppressLint
 import android.content.Context
@@ -28,7 +28,9 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import androidx.compose.runtime.saveable.rememberSaveable
+import com.google.firebase.auth.FirebaseAuth
 import com.holman.sgd.resources.components.ContenedorPrincipal
+import com.holman.sgd.resources.components.FirestorePaths
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
@@ -40,22 +42,22 @@ import java.util.Locale
 fun Calificaciones(navController: NavHostController) {
     val context = LocalContext.current
 
-    var nominas by remember { mutableStateOf<List<NominaResumen>>(emptyList()) }
+    var nominas by remember { mutableStateOf<List<com.holman.sgd.resources.NominaResumen>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    var selectedNomina by remember { mutableStateOf<NominaResumen?>(null) }
+    var selectedNomina by remember { mutableStateOf<com.holman.sgd.resources.NominaResumen?>(null) }
     var selectedNominaColor by remember { mutableStateOf<Color?>(null) }
 
     // ⬇️ NUEVO: estado controlado por nómina (id → TerminoEval)
-    val terminosElegidos = remember { mutableStateMapOf<String, TerminoEval>() }
+    val terminosElegidos = remember { mutableStateMapOf<String, com.holman.sgd.resources.TerminoEval>() }
 
     var detalleOnBackRequest by remember { mutableStateOf<(() -> Unit)?>(null) }
     var isOpeningDetail by remember { mutableStateOf(false) }
     var prefetchEstudiantes by remember { mutableStateOf<List<TablaConfig.EstudianteCalificacion>?>(null) }
 
     LaunchedEffect(Unit) {
-        cargarNominasDesdeFirestore(
+        _root_ide_package_.com.holman.sgd.resources.cargarNominasDesdeFirestore(
             onSuccess = { lista ->
                 nominas = lista
                 isLoading = false
@@ -81,7 +83,7 @@ fun Calificaciones(navController: NavHostController) {
 
     if (selectedNomina != null) {
         // ⬇️ Al abrir detalle, usamos el término guardado de esa nómina (por defecto T1)
-        val initialTermino = terminosElegidos[selectedNomina!!.id] ?: TerminoEval.T1
+        val initialTermino = terminosElegidos[selectedNomina!!.id] ?: _root_ide_package_.com.holman.sgd.resources.TerminoEval.T1
 
         ScreenNominaDetalleCalificaciones(
             nomina = selectedNomina!!,
@@ -100,7 +102,7 @@ fun Calificaciones(navController: NavHostController) {
         )
     } else {
         Box(modifier = Modifier.fillMaxSize()) {
-            FondoScreenDefault()
+            _root_ide_package_.com.holman.sgd.resources.FondoScreenDefault()
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -120,14 +122,16 @@ fun Calificaciones(navController: NavHostController) {
                             modifier = Modifier.fillMaxSize(),
                             contentAlignment = Alignment.Center
                         ) {
-                            TituloGeneralScreens(texto = "No hay nóminas Guardadas")
+                            _root_ide_package_.com.holman.sgd.resources.TituloGeneralScreens(texto = "No hay nóminas Guardadas")
                         }
                         else -> {
                             Column(
                                 modifier = Modifier.fillMaxSize(),
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
-                                TituloGeneralScreens(texto = "Nóminas Guardadas")
+                                _root_ide_package_.com.holman.sgd.resources.TituloGeneralScreens(
+                                    texto = "Nóminas Guardadas"
+                                )
                                 Spacer(modifier = Modifier.width(8.dp))
 
                                 LazyColumn(
@@ -135,7 +139,7 @@ fun Calificaciones(navController: NavHostController) {
                                     verticalArrangement = Arrangement.spacedBy(12.dp),
                                 ) {
                                     itemsIndexed(nominas) { index, nomina ->
-                                        NominaCardCalificaciones(
+                                        _root_ide_package_.com.holman.sgd.resources.NominaCardCalificaciones(
                                             nomina = nomina,
                                             index = index,
                                             // ⬇️ Clic de la card: se abre con el término seleccionado para esa nómina
@@ -143,11 +147,12 @@ fun Calificaciones(navController: NavHostController) {
                                                 isOpeningDetail = true
 
                                                 // usa el término elegido para ESA nómina (o T1 por defecto)
-                                                val terminoElegido = terminosElegidos[nomina.id] ?: TerminoEval.T1
+                                                val terminoElegido = terminosElegidos[nomina.id]
+                                                    ?: _root_ide_package_.com.holman.sgd.resources.TerminoEval.T1
 
                                                 cargarDatosDesdeFirestore(
                                                     nominaId = nomina.id,
-                                                    termino  = terminoElegido,          // 👈 FALTABA
+                                                    termino = terminoElegido,          // 👈 FALTABA
                                                     onSuccess = { lista ->
                                                         prefetchEstudiantes = lista
                                                         selectedNomina = nomina
@@ -156,12 +161,16 @@ fun Calificaciones(navController: NavHostController) {
                                                     },
                                                     onError = { msg ->
                                                         isOpeningDetail = false
-                                                        mensajealert(context, "❌ $msg")
+                                                        _root_ide_package_.com.holman.sgd.resources.mensajealert(
+                                                            context,
+                                                            "❌ $msg"
+                                                        )
                                                     }
                                                 )
                                             },
                                             // ⬇️ Hacemos el selector controlado por nómina
-                                            termSelected = terminosElegidos[nomina.id] ?: TerminoEval.T1,
+                                            termSelected = terminosElegidos[nomina.id]
+                                                ?: _root_ide_package_.com.holman.sgd.resources.TerminoEval.T1,
                                             onTermChange = { nuevo ->
                                                 terminosElegidos[nomina.id] = nuevo
                                             }
@@ -180,15 +189,15 @@ fun Calificaciones(navController: NavHostController) {
                         .fillMaxWidth(),
                     contentAlignment = Alignment.Center
                 ) {
-                    CustomButton(
+                    _root_ide_package_.com.holman.sgd.resources.CustomButton(
                         text = "Volver",
                         borderColor = ButtonDarkGray,
-                        onClick = { navController.popBackStack()}
+                        onClick = { navController.popBackStack() }
                     )
                 }
             }
 
-            LoadingDotsOverlay(isLoading = isLoading || isOpeningDetail)
+            _root_ide_package_.com.holman.sgd.resources.LoadingDotsOverlay(isLoading = isLoading || isOpeningDetail)
         }
     }
 }
@@ -197,14 +206,14 @@ fun Calificaciones(navController: NavHostController) {
 @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
 @Composable
 fun ScreenNominaDetalleCalificaciones(
-    nomina: NominaResumen,
+    nomina: com.holman.sgd.resources.NominaResumen,
     headerColor: Color,
     onBack: () -> Unit,
     onRegisterBackRequest: ((() -> Unit) -> Unit),
     initialEstudiantes: List<TablaConfig.EstudianteCalificacion>? = null,
     skipInitialLoad: Boolean = false,
     // Término con el que entras al detalle (T1/T2/T3/INF)
-    initialTermino: TerminoEval = TerminoEval.T1
+    initialTermino: com.holman.sgd.resources.TerminoEval = _root_ide_package_.com.holman.sgd.resources.TerminoEval.T1
 ) {
     val context = LocalContext.current
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
@@ -247,7 +256,10 @@ fun ScreenNominaDetalleCalificaciones(
     fun saveIfDirty(showToast: Boolean, onDone: () -> Unit = {}) {
         val cambios = estudiantesModificados()
         if (cambios.isEmpty()) {
-            if (showToast) mensajealert(context, "ℹ️ No hay cambios para guardar.")
+            if (showToast) _root_ide_package_.com.holman.sgd.resources.mensajealert(
+                context,
+                "ℹ️ No hay cambios para guardar."
+            )
             onDone(); return
         }
         isSaving = true
@@ -258,7 +270,10 @@ fun ScreenNominaDetalleCalificaciones(
         ) {
             baseline = estudiantes.associate { e -> e.idUnico to e.notas.map { it } }
             isSaving = false
-            if (showToast) mensajealert(context, "✅  Calificaciones guardadas.")
+            if (showToast) _root_ide_package_.com.holman.sgd.resources.mensajealert(
+                context,
+                "✅  Calificaciones guardadas."
+            )
             onDone()
         }
     }
@@ -275,7 +290,10 @@ fun ScreenNominaDetalleCalificaciones(
                 baseline = lista.associate { e -> e.idUnico to e.notas.map { it } }
                 if (fromSave) {
                     isSaving = false
-                    mensajealert(context, "✅  Calificaciones guardadas.")
+                    _root_ide_package_.com.holman.sgd.resources.mensajealert(
+                        context,
+                        "✅  Calificaciones guardadas."
+                    )
                 } else {
                     isLoading = false
                 }
@@ -284,10 +302,16 @@ fun ScreenNominaDetalleCalificaciones(
                 estudiantes = emptyList()
                 if (fromSave) {
                     isSaving = false
-                    mensajealert(context, "❌  Error al recargar: $err")
+                    _root_ide_package_.com.holman.sgd.resources.mensajealert(
+                        context,
+                        "❌  Error al recargar: $err"
+                    )
                 } else {
                     isLoading = false
-                    mensajealert(context, "❌  Error al cargar: $err")
+                    _root_ide_package_.com.holman.sgd.resources.mensajealert(
+                        context,
+                        "❌  Error al cargar: $err"
+                    )
                 }
             }
         )
@@ -340,7 +364,7 @@ fun ScreenNominaDetalleCalificaciones(
 
     // ---- UI ----
     Scaffold(containerColor = BackgroundDefault) {
-        FondoScreenDefault()
+        _root_ide_package_.com.holman.sgd.resources.FondoScreenDefault()
 
         Box(modifier = Modifier.fillMaxSize()) {
             Column(
@@ -356,7 +380,7 @@ fun ScreenNominaDetalleCalificaciones(
                         .weight(1f),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    NominaHeaderCard(
+                    _root_ide_package_.com.holman.sgd.resources.NominaHeaderCard(
                         nomina = nomina,
                         backgroundColor = headerColor,
                         termino = termino,
@@ -372,7 +396,7 @@ fun ScreenNominaDetalleCalificaciones(
 
                             // ⬇️ Elige qué tabla mostrar según 'termino'
                             when (termino) {
-                                TerminoEval.INF -> {
+                                _root_ide_package_.com.holman.sgd.resources.TerminoEval.INF -> {
                                     TablaInforme(
                                         estudiantes = estudiantes,
                                         nominaId = nomina.id,
@@ -380,7 +404,7 @@ fun ScreenNominaDetalleCalificaciones(
                                         colores = colores
                                     )
                                 }
-                                TerminoEval.T1, TerminoEval.T2, TerminoEval.T3 -> {
+                                _root_ide_package_.com.holman.sgd.resources.TerminoEval.T1, _root_ide_package_.com.holman.sgd.resources.TerminoEval.T2, _root_ide_package_.com.holman.sgd.resources.TerminoEval.T3 -> {
                                     TablaTrimetre(
                                         estudiantes = estudiantes,
                                         nominaId = nomina.id,
@@ -400,7 +424,7 @@ fun ScreenNominaDetalleCalificaciones(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Box(modifier = Modifier.weight(1f)) {
-                        CustomButton(
+                        _root_ide_package_.com.holman.sgd.resources.CustomButton(
                             text = if (isSaving) "Guardando…" else "Guardar",
                             borderColor = ButtonDarkPrimary,
                             onClick = {
@@ -409,7 +433,7 @@ fun ScreenNominaDetalleCalificaciones(
                         )
                     }
                     Box(modifier = Modifier.weight(1f)) {
-                        CustomButton(
+                        _root_ide_package_.com.holman.sgd.resources.CustomButton(
                             text = "Volver a nóminas",
                             borderColor = ButtonDarkGray,
                             onClick = {
@@ -425,154 +449,128 @@ fun ScreenNominaDetalleCalificaciones(
             }
 
             if (isBusy) {
-                LoadingDotsOverlay(isLoading = true)
+                _root_ide_package_.com.holman.sgd.resources.LoadingDotsOverlay(isLoading = true)
             }
         }
     }
 }
 
 
-private fun terminoToSeccion(t: TerminoEval): String = when (t) {
-    TerminoEval.T1  -> "PrimerTrimestre"
-    TerminoEval.T2  -> "SegundoTrimestre"
-    TerminoEval.T3  -> "TercerTrimestre"
-    TerminoEval.INF -> "InformeAnual"
+private fun terminoToSeccion(t: com.holman.sgd.resources.TerminoEval): String = when (t) {
+    com.holman.sgd.resources.TerminoEval.T1  -> FirestorePaths.SECCIONES_TABLAS_INSUMOS[0]
+    com.holman.sgd.resources.TerminoEval.T2  -> FirestorePaths.SECCIONES_TABLAS_INSUMOS[1]
+    com.holman.sgd.resources.TerminoEval.T3  -> FirestorePaths.SECCIONES_TABLAS_INSUMOS[2]
+    com.holman.sgd.resources.TerminoEval.INF -> {FirestorePaths.SECCIONES_TABLAS_INSUMOS[3]}
 }
+
 
 fun cargarDatosDesdeFirestore(
     nominaId: String,
-    termino: TerminoEval,
+    termino: com.holman.sgd.resources.TerminoEval,
     onSuccess: (List<TablaConfig.EstudianteCalificacion>) -> Unit,
     onError: (String) -> Unit
 ) {
-    val db = FirebaseFirestore.getInstance()
-    val refNomina = db.collection("gestionAcademica")
-        .document("gestionNominas")
-        .collection("nominasEstudiantes")
-        .document(nominaId)
+    val uid = FirebaseAuth.getInstance().currentUser?.uid ?: run { onError("Usuario no autenticado"); return }
+
+    val refNomina = FirestorePaths.nominaDoc(uid, nominaId)
+
 
     val seccion = terminoToSeccion(termino)
-    val docSeccion = refNomina.collection("calificaciones").document(seccion)
-    val colInsumos = docSeccion.collection("insumos")
 
-    // 1) Roster desde la tabla de la nómina (col1..col4)
-    refNomina.get()
-        .addOnSuccessListener { nominaDoc ->
-            val tabla = nominaDoc.get("tabla") as? List<Map<String, Any?>> ?: emptyList()
-            val filas = tabla.drop(1)
-            data class R(val id: String, val nro: Int, val ced: String, val nom: String)
-            val roster = filas.mapIndexed { idx, fila ->
-                val id  = (fila["col1"] as? String).orEmpty().trim()
-                val nro = ((fila["col2"] as? String).orEmpty().trim()).toIntOrNull() ?: (idx + 1)
-                val ced = (fila["col3"] as? String).orEmpty().trim()
-                val nom = (fila["col4"] as? String).orEmpty().trim()
-                R(id, nro, ced, nom)
-            }
-            if (roster.isEmpty()) { onSuccess(emptyList()); return@addOnSuccessListener }
 
-            // 2) Meta para insumosCount (solo trimestres)
-            docSeccion.get()
-                .addOnSuccessListener { meta ->
-                    val insumosCount =
-                        if (termino == TerminoEval.INF) 0
-                        else (meta.getLong("insumosCount") ?: TablaConfig.INSUMOS_COUNT.toLong()).toInt()
+    val docSeccion = FirestorePaths.calificacionesSeccion(refNomina, seccion)
+    val colInsumos = FirestorePaths.insumos(refNomina, seccion)
 
-                    // 3) Leer insumos
-                    colInsumos.get()
-                        .addOnSuccessListener { snap ->
-                            val porId = snap.documents.associateBy({ it.id }, { it.data ?: emptyMap<String, Any?>() })
+    refNomina.get().addOnSuccessListener { nominaDoc ->
+        val tabla = nominaDoc.get("tabla") as? List<Map<String, Any?>> ?: emptyList()
+        if (tabla.isEmpty()) { onSuccess(emptyList()); return@addOnSuccessListener }
 
-                            val lista = roster.sortedBy { it.nro }.map { r ->
-                                val data = porId[r.id]
-
-                                if (termino == TerminoEval.INF) {
-                                    // Informe: T1,T2,T3,Suple → posiciones 0..3
-                                    val t1 = (data?.get("PromedioT1") as? Number)?.toDouble()
-                                    val t2 = (data?.get("PromedioT2") as? Number)?.toDouble()
-                                    val t3 = (data?.get("PromedioT3") as? Number)?.toDouble()
-                                    val su = (data?.get("Supletorio") as? Number)?.toDouble()
-                                    val notas = mutableListOf<Double?>(t1, t2, t3, su)
-                                    TablaConfig.EstudianteCalificacion(
-                                        idUnico = r.id, numero = r.nro, nombre = r.nom, notas = notas
-                                    )
-                                } else {
-                                    // Trimestre: actividades + 4 sumativas
-                                    val acts = (data?.get("actividades") as? List<*>)
-                                        ?.map { (it as? Number)?.toDouble() }
-                                        ?.let { l -> if (l.size >= insumosCount) l.take(insumosCount) else l + List(insumosCount - l.size){ null } }
-                                        ?: List(insumosCount) { null }
-                                    val proyecto   = (data?.get("proyecto") as? Number)?.toDouble()
-                                    val evaluacion = (data?.get("evaluacion") as? Number)?.toDouble()
-                                    val refuerzo   = (data?.get("refuerzo") as? Number)?.toDouble()
-                                    val mejora     = (data?.get("mejora") as? Number)?.toDouble()
-
-                                    val notas = (acts + listOf(proyecto, evaluacion, refuerzo, mejora)).toMutableList()
-                                    TablaConfig.EstudianteCalificacion(
-                                        idUnico = r.id, numero = r.nro, nombre = r.nom, notas = notas
-                                    )
-                                }
-                            }
-                            onSuccess(lista)
-                        }
-                        .addOnFailureListener { e -> onError(e.localizedMessage ?: "Error leyendo insumos ($seccion)") }
-                }
-                .addOnFailureListener { e -> onError(e.localizedMessage ?: "Error leyendo sección $seccion") }
+        val filas = tabla.drop(1)
+        val roster = filas.mapIndexed { idx, fila ->
+            val id  = (fila["col1"] as? String).orEmpty().trim()
+            val nro = ((fila["col2"] as? String).orEmpty().trim()).toIntOrNull() ?: (idx + 1)
+            val nom = (fila["col4"] as? String).orEmpty().trim()
+            Triple(id, nro, nom)
         }
-        .addOnFailureListener { e -> onError(e.localizedMessage ?: "Error leyendo nómina") }
+
+        docSeccion.get().addOnSuccessListener { meta ->
+            val insumosCount = if (termino == _root_ide_package_.com.holman.sgd.resources.TerminoEval.INF) 0
+            else (meta.getLong("insumosCount") ?: TablaConfig.INSUMOS_COUNT.toLong()).toInt()
+
+            colInsumos.get().addOnSuccessListener { snap ->
+                val porId = snap.documents.associateBy({ it.id }, { it.data ?: emptyMap<String, Any?>() })
+
+                val lista = roster.map { (id, nro, nom) ->
+                    val data = porId[id]
+                    val notas = if (termino == _root_ide_package_.com.holman.sgd.resources.TerminoEval.INF) {
+                        mutableListOf(
+                            (data?.get("PromedioT1") as? Number)?.toDouble(),
+                            (data?.get("PromedioT2") as? Number)?.toDouble(),
+                            (data?.get("PromedioT3") as? Number)?.toDouble(),
+                            (data?.get("Supletorio") as? Number)?.toDouble()
+                        )
+                    } else {
+                        val acts = (data?.get("actividades") as? List<*>)
+                            ?.map { (it as? Number)?.toDouble() }
+                            ?.let { l -> if (l.size >= insumosCount) l.take(insumosCount) else l + List(insumosCount - l.size){ null } }
+                            ?: List(insumosCount) { null }
+
+                        (acts + listOf(
+                            (data?.get("proyecto") as? Number)?.toDouble(),
+                            (data?.get("evaluacion") as? Number)?.toDouble(),
+                            (data?.get("refuerzo") as? Number)?.toDouble(),
+                            (data?.get("mejora") as? Number)?.toDouble()
+                        )).toMutableList()
+                    }
+                    TablaConfig.EstudianteCalificacion(idUnico = id, numero = nro, nombre = nom, notas = notas)
+                }
+                onSuccess(lista)
+            }.addOnFailureListener { e -> onError("Error insumos: ${e.localizedMessage}") }
+        }.addOnFailureListener { e -> onError("Error sección: ${e.localizedMessage}") }
+    }.addOnFailureListener { e -> onError("Error nómina: ${e.localizedMessage}") }
 }
 
 fun guardarDatosEnFirestore(
     nominaId: String,
-    termino: TerminoEval,
+    termino: com.holman.sgd.resources.TerminoEval,
     estudiantes: List<TablaConfig.EstudianteCalificacion>,
     onComplete: () -> Unit
 ) {
+    val uid = FirebaseAuth.getInstance().currentUser?.uid ?: run { onComplete(); return }
     val db = FirebaseFirestore.getInstance()
-    val refNomina = db.collection("gestionAcademica")
-        .document("gestionNominas")
-        .collection("nominasEstudiantes")
-        .document(nominaId)
+
+    val refNomina = FirestorePaths.nominaDoc(uid, nominaId)
+
 
     val seccion = terminoToSeccion(termino)
-    val docSeccion = refNomina.collection("calificaciones").document(seccion)
-    val colInsumos = docSeccion.collection("insumos")
 
-    // Para trimestres, necesito saber insumosCount
-    docSeccion.get()
-        .addOnSuccessListener { meta ->
-            val insumosCount =
-                if (termino == TerminoEval.INF) 0
-                else (meta.getLong("insumosCount") ?: TablaConfig.INSUMOS_COUNT.toLong()).toInt()
 
-            val batch = db.batch()
+    val docSeccion = FirestorePaths.calificacionesSeccion(refNomina, seccion)
+    val colInsumos = FirestorePaths.insumos(refNomina, seccion)
 
-            estudiantes.forEach { est ->
-                val docRef = colInsumos.document(est.idUnico)
-                val data = when (termino) {
-                    TerminoEval.INF -> {
-                        val suple = est.notas.getOrNull(3)
-                        mapOf(
-                            // solo lo editable
-                            "Supletorio" to suple,
-                            "updatedAt" to System.currentTimeMillis()
-                        )
-                    }
-                    else -> {
-                        mapOf(
-                            "actividades" to est.notas.take(insumosCount),
-                            "proyecto"    to est.notas.getOrNull(insumosCount + 0),
-                            "evaluacion"  to est.notas.getOrNull(insumosCount + 1),
-                            "refuerzo"    to est.notas.getOrNull(insumosCount + 2),
-                            "mejora"      to est.notas.getOrNull(insumosCount + 3),
-                            "updatedAt"   to System.currentTimeMillis()
-                        )
-                    }
-                }
-                batch.set(docRef, data, com.google.firebase.firestore.SetOptions.merge())
+    docSeccion.get().addOnSuccessListener { meta ->
+        val insumosCount = if (termino == _root_ide_package_.com.holman.sgd.resources.TerminoEval.INF) 0
+        else (meta.getLong("insumosCount") ?: TablaConfig.INSUMOS_COUNT.toLong()).toInt()
+
+        val batch = db.batch()
+        estudiantes.forEach { est ->
+            val docRef = colInsumos.document(est.idUnico)
+            val data = when (termino) {
+                _root_ide_package_.com.holman.sgd.resources.TerminoEval.INF -> mapOf(
+                    "Supletorio" to est.notas.getOrNull(3),
+                    "updatedAt" to System.currentTimeMillis()
+                )
+                else -> mapOf(
+                    "actividades" to est.notas.take(insumosCount),
+                    "proyecto"    to est.notas.getOrNull(insumosCount + 0),
+                    "evaluacion"  to est.notas.getOrNull(insumosCount + 1),
+                    "refuerzo"    to est.notas.getOrNull(insumosCount + 2),
+                    "mejora"      to est.notas.getOrNull(insumosCount + 3),
+                    "updatedAt"   to System.currentTimeMillis()
+                )
             }
-
-            batch.commit().addOnCompleteListener { onComplete() }
+            batch.set(docRef, data, com.google.firebase.firestore.SetOptions.merge())
         }
-        .addOnFailureListener { onComplete() }
+        batch.commit().addOnCompleteListener { onComplete() }
+    }.addOnFailureListener { onComplete() }
 }
-
